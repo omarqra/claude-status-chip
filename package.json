@@ -2,7 +2,7 @@
   "name": "claude-status-chip",
   "displayName": "Claude Status Chip",
   "description": "Always-visible status chip inside the Claude Code panel: model, git branch (live), context usage with progress fill, reasoning effort, extended thinking, session cost — plus a gear menu with per-item toggles and transcript-only zoom. Self-heals after Claude extension auto-updates.",
-  "version": "1.0.2",
+  "version": "1.0.4",
   "publisher": "omarkara",
   "license": "MIT",
   "author": {

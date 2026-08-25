@@ -39,10 +39,13 @@ function findExtension() {
 }
 
 // Anchor: the render call of the built-in context-usage button in the input footer:
-//   b(IXe,{usedTokens:e.usageData.value.totalTokens,contextWindow:...,onCompact:l,buttonClassName:Ld.usageButtonV2})
+//   j(c90,{usedTokens:$.usageData.value.totalTokens,contextWindow:...,onCompact:z,buttonClassName:$J.usageButtonV2})
 // g1 = minified jsx fn, g2 = component, g3 = session store var. Minified names change per build,
-// so everything is captured rather than hardcoded.
-const re = /(\w+)\((\w+),\{usedTokens:(\w+)\.usageData\.value\.totalTokens,contextWindow:[^{}]*?,onCompact:\w+,buttonClassName:\w+\.usageButtonV2\}\)/;
+// so everything is captured rather than hardcoded. Identifiers are [\w$], not \w: the minifier hands
+// out bare "$" and "$J" names, which is exactly what broke this on Claude 2.1.245. Everything between
+// contextWindow: and buttonClassName: is skipped wholesale, so a renamed or reordered onCompact prop
+// can't break the match either.
+const re = /([\w$]+)\(([\w$]+),\{usedTokens:([\w$]+)\.usageData\.value\.totalTokens,contextWindow:[^{}]*?buttonClassName:[\w$]+\.usageButtonV2\}\)/;
 
 // ---------------------------------------------------------------------------
 // Runtime support, appended once at the end of the bundle: prefs store,
