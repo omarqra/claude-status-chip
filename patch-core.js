@@ -61,12 +61,16 @@ const runtime = [
   // [key, menu label, dot color] — dot colors mirror the chip pill colors
   'var SEGS=[["model","Model","var(--vscode-charts-blue,#4fc1ff)"],["branch","Branch","var(--vscode-charts-purple,#b180d7)"],["ctx","Context usage","var(--vscode-charts-green,#89d185)"],["effort","Effort","var(--vscode-charts-yellow,#cca700)"],["think","Thinking","var(--vscode-charts-orange,#d18616)"],["cost","Cost","var(--vscode-charts-yellow,#cca700)"]];',
   'var api=window.__ccStatus={};',
+  // Claude's input footer got its own clickable model pill (2.1.25x), so our model segment
+  // would just duplicate it — it ships off and stays available in the gear menu.
+  'var DEF={model:false};',
+  'api.visible=function(k){var v=api.prefs[k];return v===undefined?DEF[k]!==false:v!==false};',
   'api.prefs=load();',
   `api.zoom=function(){var z=api.prefs.zoom;return typeof z==="number"&&z>=0.8&&z<=1.6?z:${ZOOM}};`,
   // zoom the conversation text only — not the header or the input box. The hash suffix of
   // messagesContainer_<hash> changes per build, so match on the stable semantic prefix.
   'api.applyZoom=function(){styleEl("cc-zoom").textContent=api.zoom()===1?"":"[class*=messagesContainer_]{zoom:"+api.zoom()+"}"};',
-  'api.applyCss=function(){var css="";for(var i=0;i<SEGS.length;i++){var k=SEGS[i][0];if(api.prefs[k]===false)css+=".cc-status-chip [data-seg="+k+"]{display:none}"}styleEl("cc-status-style").textContent=css};',
+  'api.applyCss=function(){var css="";for(var i=0;i<SEGS.length;i++){var k=SEGS[i][0];if(!api.visible(k))css+=".cc-status-chip [data-seg="+k+"]{display:none}"}styleEl("cc-status-style").textContent=css};',
   'api.set=function(k,v){api.prefs[k]=v;save(api.prefs);api.applyCss()};',
   'api.setZoom=function(z){api.prefs.zoom=z;save(api.prefs);api.applyZoom()};',
   'api.openMenu=function(ev){',
@@ -76,7 +80,7 @@ const runtime = [
   'mnu.style.cssText="position:fixed;z-index:100000;min-width:200px;padding:10px;border-radius:10px;font-size:12px;direction:ltr;background:var(--vscode-editorWidget-background,#252526);color:var(--vscode-foreground,#ccc);border:1px solid var(--vscode-widget-border,#454545);box-shadow:0 6px 24px rgba(0,0,0,.4)";',
   'var h=document.createElement("div");h.textContent="Status bar";h.style.cssText="font-weight:600;margin:0 6px 6px;opacity:.75;font-size:11px;text-transform:uppercase;letter-spacing:.4px";mnu.appendChild(h);',
   'SEGS.forEach(function(s){var lab=document.createElement("label");',
-  'var c=document.createElement("input");c.type="checkbox";c.checked=api.prefs[s[0]]!==false;c.onchange=function(){api.set(s[0],c.checked)};lab.appendChild(c);',
+  'var c=document.createElement("input");c.type="checkbox";c.checked=api.visible(s[0]);c.onchange=function(){api.set(s[0],c.checked)};lab.appendChild(c);',
   'var dot=document.createElement("span");dot.style.cssText="width:8px;height:8px;border-radius:999px;flex:none;background:"+s[2];lab.appendChild(dot);',
   'lab.appendChild(document.createTextNode(s[1]));mnu.appendChild(lab)});',
   'var zr=document.createElement("div");zr.style.cssText="display:flex;align-items:center;gap:8px;margin:8px 6px 0;padding-top:10px;border-top:1px solid var(--vscode-widget-border,#454545)";',
@@ -95,12 +99,48 @@ const runtime = [
   '};',
   // static styles: menu rows/hover, themed checkboxes, zoom buttons, gear hover spin
   'styleEl("cc-menu-style").textContent="#cc-status-menu label{display:flex;align-items:center;gap:8px;padding:4px 6px;border-radius:5px;cursor:pointer}#cc-status-menu label:hover{background:var(--vscode-list-hoverBackground,rgba(128,128,128,.12))}#cc-status-menu input[type=checkbox]{accent-color:var(--vscode-button-background,#0e639c);margin:0}#cc-status-menu .cc-zbtn{width:24px;height:24px;cursor:pointer;border-radius:5px;border:1px solid var(--vscode-widget-border,#454545);background:var(--vscode-button-secondaryBackground,#3a3d41);color:inherit;font-size:13px;line-height:1}#cc-status-menu .cc-zbtn:hover{background:var(--vscode-button-secondaryHoverBackground,#45494e)}.cc-status-chip .cc-gear{transition:transform .15s ease,opacity .15s ease}.cc-status-chip .cc-gear:hover{opacity:1;transform:rotate(45deg)}";',
+  // --- merge with Claude's own input footer (2.1.25x) -------------------------
+  // Claude's footer now carries its own clickable model pill, and it measures its
+  // children: when they overrun the row it hides button labels (fit stage 1) and
+  // then drops the model pill onto a second row (stage 2). So: restyle that pill
+  // to our pill shape (one continuous strip), and when the footer runs out of room
+  // move our chip to its own row -- the inline copy goes display:none, which takes
+  // our width out of Claude's measurement, and the footer lays out natively again.
+  'var BLU="var(--vscode-charts-blue,#4fc1ff)";',
+  'var MCSS="[class*=modelPill_]{min-height:0;height:18px;margin-left:0;padding:1px 8px;font-size:11px;line-height:16px;border-radius:999px;align-self:center;color:"+BLU+";background:color-mix(in srgb, "+BLU+" 12%, transparent)}"',
+  '+"[class*=modelPill_]:hover{background:color-mix(in srgb, "+BLU+" 22%, transparent)}"',
+  '+".cc-status-chip.cc-row{display:none!important}"',
+  '+"body.cc-rowmode .cc-status-chip.cc-row{display:flex!important}"',
+  '+"body.cc-rowmode .cc-status-chip.cc-inline{display:none!important}";',
+  'styleEl("cc-merge-style").textContent=MCSS;',
+  // Nudge Claude's footer into re-measuring: it watches its subtree for childList
+  // changes, and a CSS-only visibility flip wouldn't wake it. The node is added and
+  // removed synchronously, so React never sees it.
+  'function poke(ft){try{var d=document.createElement("span");d.style.display="none";ft.appendChild(d);ft.removeChild(d)}catch(_){}}',
+  // Inline <-> own-row switch, driven by Claude's own overflow verdict (data-fit-stage)
+  // rather than by width math of ours. Going back inline needs the footer to grow well
+  // past the width we bailed at, so a panel parked at the threshold can not oscillate.
+  'var st={mode:"inline",bail:0};',
+  'api.fit=function(){try{',
+  'var inl=document.querySelector(".cc-status-chip.cc-inline");',
+  'if(!inl||!document.querySelector(".cc-status-chip.cc-row"))return;',
+  'var ft=inl.parentElement;if(!ft)return;',
+  'var w=ft.clientWidth||0,stage=+(ft.getAttribute("data-fit-stage")||0);',
+  'if(st.mode==="inline"){if(stage>=1){st.mode="row";st.bail=w;document.body.classList.add("cc-rowmode");poke(ft)}}',
+  'else if(w>st.bail+64){st.mode="inline";document.body.classList.remove("cc-rowmode");poke(ft)}',
+  '}catch(_){}};',
+  'setInterval(api.fit,700);',
   'api.applyZoom();api.applyCss();',
   '}catch(_){}})();',
 ].join("\n");
 
 // ---------------------------------------------------------------------------
-// The chip element, injected as a sibling right after the built-in usage button.
+// The chip element. Rendered twice by the same component: inline in the input
+// footer (right after the built-in usage button) and again as an extra row under
+// the footer. Only one is visible at a time -- api.fit in the runtime hides the
+// inline copy when Claude's footer runs out of room, which also takes our width
+// out of Claude's own fit measurement so its toolbar lays out natively again.
+// The pills are built once and shared by both copies (A.__mk below).
 // Segments carry data-seg attributes; visibility is pure CSS (see runtime), so
 // toggling needs no React re-render. The gear button always renders.
 // ---------------------------------------------------------------------------
@@ -147,7 +187,7 @@ const chip = (jsx, sess) => `,(function(){` +
   `if(W>0)L.push(["ctx",F(T)+"/"+F(W)+" ("+P+"%)"]);` +
   `else if(T>0)L.push(["ctx",F(T)+" tok"]);` +
   `if(Mv&&EF)L.push(["effort","e:"+EF]);` +
-  `if(Mv&&TH&&TH!=="off")L.push(["think",TH==="on"?"think":"think:"+TH]);` +
+  `if(Mv&&TH&&TH!=="off")L.push(["think",/^(on|default_on)$/.test(TH)?"think":"think:"+TH]);` +
   `if(CO>=0.005)L.push(["cost","$"+CO.toFixed(2)]);` +
   // theme-aware colors from the charts palette (adapt to light/dark themes)
   `var GRN="var(--vscode-charts-green,#89d185)",YEL="var(--vscode-charts-yellow,#cca700)",` +
@@ -161,15 +201,31 @@ const chip = (jsx, sess) => `,(function(){` +
   // the context pill doubles as a progress bar: its background fills to the usage percentage
   `if(s[0]==="ctx"&&W>0)st.background="linear-gradient(90deg, color-mix(in srgb, "+c+" 30%, transparent) "+P+"%, color-mix(in srgb, "+c+" 10%, transparent) "+P+"%)";` +
   `return ${jsx}("span",{"data-seg":s[0],style:st,children:s[1]})});` +
-  // gear: always rendered so settings stay reachable even when every segment is hidden/empty
-  `kids.push(${jsx}("button",{type:"button",className:"cc-gear",title:"Status bar settings","aria-label":"Status bar settings",` +
+  // gear leads the group, next to Claude's own footer buttons: always rendered, so
+  // settings stay reachable even when every segment is hidden or empty
+  `kids.unshift(${jsx}("button",{type:"button",className:"cc-gear",title:"Status bar settings","aria-label":"Status bar settings",` +
   `onClick:function(ev){if(window.__ccStatus)window.__ccStatus.openMenu(ev)},` +
   `style:{cursor:"pointer",border:"none",background:"transparent",color:"inherit",fontSize:"13px",padding:"0 2px",opacity:"0.6",lineHeight:"1"},` +
   `children:"\\u2699"}));` +
-  `return ${jsx}("span",{className:"${MARKER}",` +
-  `style:{fontSize:"11px",whiteSpace:"nowrap",direction:"ltr",alignSelf:"center",padding:"0 6px",` +
-  `display:"inline-flex",alignItems:"center",gap:"6px",color:"var(--vscode-descriptionForeground)"},` +
-  `children:kids})})()`;
+  // inline sits centred in Claude's toolbar row; the own-row copy spans the panel and
+  // wraps instead of overflowing, since nothing else shares its line
+  `var IS={fontSize:"11px",whiteSpace:"nowrap",direction:"ltr",alignSelf:"center",padding:"0 6px",` +
+  `display:"inline-flex",alignItems:"center",gap:"6px",color:"var(--vscode-descriptionForeground)"};` +
+  `var RS={fontSize:"11px",direction:"ltr",padding:"0 8px 6px",` +
+  `display:"flex",flexWrap:"wrap",alignItems:"center",gap:"6px",color:"var(--vscode-descriptionForeground)"};` +
+  `var A=(window.__ccStatus=window.__ccStatus||{});` +
+  `A.__mk=function(v){return ${jsx}("span",{className:"${MARKER} cc-"+v,style:v==="row"?RS:IS,children:kids})};` +
+  `return A.__mk("inline")})()`;
+
+// The own-row copy, appended to the fragment that wraps the footer (the same one
+// Claude drops its model pill into at fit stage 2). Reuses the builder the inline
+// copy left on window, which is safe because array children evaluate in order.
+const chipRow = () => `,(window.__ccStatus&&window.__ccStatus.__mk?window.__ccStatus.__mk("row"):null)`;
+
+// Anchor for that fragment slot: `M===2&&D("div",{className:F9.modelPillRow,children:e0})`,
+// the conditional second row Claude added in 2.1.25x. Searched only just after the usage
+// button anchor, so we can not land in some other component that happens to look similar.
+const reRow = /[\w$]+===2&&[\w$]+\("div",\{className:[\w$]+\.modelPillRow,children:[\w$]+\}\)/;
 
 function run() {
   const ext = findExtension();
@@ -184,12 +240,22 @@ function run() {
   const bak = ext.file + ".cc-status.bak";
   if (!fs.existsSync(bak)) fs.copyFileSync(ext.file, bak);
   src = src.replace(re, (whole, jsx, _comp, sess) => whole + chip(jsx, sess));
+  // second injection: the own-row copy. Optional -- without it the chip simply stays
+  // inline (pre-2.1.25x behaviour) instead of failing the whole patch.
+  const from = src.indexOf(MARKER);
+  const win = src.slice(from, from + 12000);
+  const mRow = win.match(reRow);
+  if (mRow) {
+    const at = from + mRow.index + mRow[0].length;
+    src = src.slice(0, at) + chipRow() + src.slice(at);
+  }
   // leading \n in case the bundle ends with a // comment (e.g. sourceMappingURL)
   src += "\n" + runtime + "\n";
   fs.writeFileSync(ext.file, src);
   return {
-    status: "patched", file: ext.file,
-    message: "cc-status: patched " + ext.file + " (backup: " + path.basename(bak) + "). Reload the VSCode window to see it.",
+    status: "patched", file: ext.file, rowMode: !!mRow,
+    message: "cc-status: patched " + ext.file + " (backup: " + path.basename(bak) + ")" +
+      (mRow ? "" : " [own-row anchor not found -- chip stays inline]") + ". Reload the VSCode window to see it.",
   };
 }
 

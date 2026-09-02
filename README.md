@@ -13,18 +13,24 @@ Adds an always-visible, colored status chip to the **Claude Code** panel's input
 ![The status chip in the Claude Code panel: model, branch, context usage, effort and cost pills next to the input box](screenshot.png)
 
 ```
-[Fable 5] [(main)] [487k/1M (49%)] [e:xhigh] [think] [$12.35] ⚙
+⚙ [(main)] [487k/1M (49%)] [e:xhigh] [think] [$12.35]  [Opus 5]
 ```
 
-- **Model** actually running (blue)
 - **Git branch**, live — updates within seconds of a checkout (purple)
 - **Context usage** as `used/window (%)` — the pill fills like a progress bar and turns
   green → yellow (≥50%) → red (≥80%)
 - **Reasoning effort**, colored by level
 - **think** indicator when extended thinking is on (orange)
 - **Session cost** when the API reports one (yellow)
+- **Model** the session is actually running (blue) — off by default since Claude's own toolbar
+  gained a model pill; turn it on from the gear menu if you want it
 - **⚙ gear menu**: show/hide any item + zoom the conversation transcript only (80%–160%) —
   the panel header and input box stay at normal size. Preferences persist.
+
+It merges into Claude's toolbar rather than crowding it: Claude's own model pill is restyled to
+match the chip (and still opens the model switcher), and when the panel gets too narrow for one
+row the chip moves to its own row underneath — Claude's toolbar then measures and lays itself out
+exactly as it would without the extension, instead of collapsing its buttons to icons.
 
 ## Why this exists
 
@@ -48,8 +54,8 @@ Stock VS Code reads Microsoft's marketplace, where this extension is not publish
 from Open VSX and install it manually:
 
 ```
-curl -LO https://open-vsx.org/api/omarkara/claude-status-chip/1.0.1/file/omarkara.claude-status-chip-1.0.1.vsix
-code --install-extension omarkara.claude-status-chip-1.0.1.vsix
+curl -LO https://open-vsx.org/api/omarkara/claude-status-chip/1.1.0/file/omarkara.claude-status-chip-1.1.0.vsix
+code --install-extension omarkara.claude-status-chip-1.1.0.vsix
 ```
 
 Or: Extensions view → `⋯` → **Install from VSIX…** and pick the downloaded file.
