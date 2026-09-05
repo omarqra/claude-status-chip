@@ -5,3 +5,5 @@
 .env.*
 *.vsix
 node_modules/**
+CLAUDE.md
+.env.example
