@@ -61,9 +61,13 @@ const runtime = [
   // [key, menu label, dot color] — dot colors mirror the chip pill colors
   'var SEGS=[["model","Model","var(--vscode-charts-blue,#4fc1ff)"],["branch","Branch","var(--vscode-charts-purple,#b180d7)"],["ctx","Context usage","var(--vscode-charts-green,#89d185)"],["effort","Effort","var(--vscode-charts-yellow,#cca700)"],["think","Thinking","var(--vscode-charts-orange,#d18616)"],["cost","Cost","var(--vscode-charts-yellow,#cca700)"]];',
   'var api=window.__ccStatus={};',
-  // Claude's input footer got its own clickable model pill (2.1.25x), so our model segment
-  // would just duplicate it — it ships off and stays available in the gear menu.
-  'var DEF={model:false};',
+  // Segments Claude's own UI already shows, so ours would only duplicate them. They ship
+  // off and stay available in the gear menu:
+  //   model  — its footer gained a clickable model pill (2.1.25x)
+  //   effort — that pill now carries the level too ("Opus 5  xhigh"), and 2.1.261 also put
+  //            it on the input box border, spelled out for 3s after every change
+  // Thinking stays on: Claude surfaces it nowhere, only inside the command menu.
+  'var DEF={model:false,effort:false};',
   'api.visible=function(k){var v=api.prefs[k];return v===undefined?DEF[k]!==false:v!==false};',
   'api.prefs=load();',
   `api.zoom=function(){var z=api.prefs.zoom;return typeof z==="number"&&z>=0.8&&z<=1.6?z:${ZOOM}};`,
@@ -217,15 +221,18 @@ const chip = (jsx, sess) => `,(function(){` +
   `A.__mk=function(v){return ${jsx}("span",{className:"${MARKER} cc-"+v,style:v==="row"?RS:IS,children:kids})};` +
   `return A.__mk("inline")})()`;
 
-// The own-row copy, appended to the fragment that wraps the footer (the same one
-// Claude drops its model pill into at fit stage 2). Reuses the builder the inline
-// copy left on window, which is safe because array children evaluate in order.
-const chipRow = () => `,(window.__ccStatus&&window.__ccStatus.__mk?window.__ccStatus.__mk("row"):null)`;
+// The own-row copy, added to the fragment that wraps the footer, just ahead of the row
+// Claude drops its model pill into at fit stage 2. Reuses the builder the inline copy
+// left on window, which is safe because array children evaluate in order.
+const chipRow = () => `(window.__ccStatus&&window.__ccStatus.__mk?window.__ccStatus.__mk("row"):null)`;
 
-// Anchor for that fragment slot: `M===2&&D("div",{className:F9.modelPillRow,children:e0})`,
-// the conditional second row Claude added in 2.1.25x. Searched only just after the usage
-// button anchor, so we can not land in some other component that happens to look similar.
-const reRow = /[\w$]+===2&&[\w$]+\("div",\{className:[\w$]+\.modelPillRow,children:[\w$]+\}\)/;
+// Anchor for that fragment slot: the head of Claude's conditional second row,
+// `M===2&&D("div",{className:F9.modelPillRow,`. Only the head is matched and we insert
+// ahead of it, so we never have to find where its expression ends -- what Claude puts
+// inside that row keeps changing (a bare identifier in 2.1.258, a component call in
+// 2.1.261, which is what silently cost us the own row on that version). Searched only
+// just after the usage button anchor, so we can not land in a similar-looking component.
+const reRow = /[\w$]+===2&&[\w$]+\("div",\{className:[\w$]+\.modelPillRow,/;
 
 function run() {
   const ext = findExtension();
@@ -246,8 +253,8 @@ function run() {
   const win = src.slice(from, from + 12000);
   const mRow = win.match(reRow);
   if (mRow) {
-    const at = from + mRow.index + mRow[0].length;
-    src = src.slice(0, at) + chipRow() + src.slice(at);
+    const at = from + mRow.index;
+    src = src.slice(0, at) + chipRow() + "," + src.slice(at);
   }
   // leading \n in case the bundle ends with a // comment (e.g. sourceMappingURL)
   src += "\n" + runtime + "\n";
