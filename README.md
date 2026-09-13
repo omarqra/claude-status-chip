@@ -55,8 +55,8 @@ Stock VS Code reads Microsoft's marketplace, where this extension is not publish
 from Open VSX and install it manually:
 
 ```
-curl -LO https://open-vsx.org/api/omarkara/claude-status-chip/1.1.2/file/omarkara.claude-status-chip-1.1.2.vsix
-code --install-extension omarkara.claude-status-chip-1.1.2.vsix
+curl -LO https://open-vsx.org/api/omarkara/claude-status-chip/1.1.3/file/omarkara.claude-status-chip-1.1.3.vsix
+code --install-extension omarkara.claude-status-chip-1.1.3.vsix
 ```
 
 Or: Extensions view → `⋯` → **Install from VSIX…** and pick the downloaded file.

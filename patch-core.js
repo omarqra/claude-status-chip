@@ -143,6 +143,11 @@ const runtime = [
   '}catch(_){}})();',
 ].join("\n");
 
+// Captured identifiers (the jsx factory, the session store) are passed INTO the chip's
+// IIFE as parameters rather than referenced by their minified names inside it. Our own
+// locals would otherwise shadow them the moment the minifier reuses a name we picked:
+// 2.1.270 named the jsx factory `F`, our number formatter is `var F=...`, and the chip
+// rendered the literal text "span" -- valid JS, no error, just wrong on screen.
 // ---------------------------------------------------------------------------
 // The chip element. Rendered twice by the same component: inline in the input
 // footer (right after the built-in usage button) and again as an extra row under
@@ -153,33 +158,33 @@ const runtime = [
 // Segments carry data-seg attributes; visibility is pure CSS (see runtime), so
 // toggling needs no React re-render. The gear button always renders.
 // ---------------------------------------------------------------------------
-const chip = (jsx, sess) => `,(function(){` +
+const chip = (jsx, sess) => `,(function(_ccJsx,_ccS){` +
   // live branch detection: poll `git symbolic-ref` via the host's exec RPC and feed the
   // session's own gitBranch signal, so the chip (and session list) update on branch switch.
   // One interval per session store; the webview dies with the panel, so no cleanup needed.
-  `if(!${sess}.__ccBrPoll){var pf=function(){try{` +
-  `var cn=${sess}.connection&&${sess}.connection.value;` +
+  `if(!_ccS.__ccBrPoll){var pf=function(){try{` +
+  `var cn=_ccS.connection&&_ccS.connection.value;` +
   `if(cn&&cn.exec)cn.exec("git",["symbolic-ref","--short","HEAD"]).then(function(r){` +
   `var b=(r&&r.stdout||"").trim();` +
-  `if(b&&${sess}.gitBranch&&${sess}.gitBranch.value!==b)${sess}.gitBranch.value=b` +
+  `if(b&&_ccS.gitBranch&&_ccS.gitBranch.value!==b)_ccS.gitBranch.value=b` +
   `}).catch(function(){})` +
-  `}catch(_){}};pf();${sess}.__ccBrPoll=setInterval(pf,15000);}` +
-  `var U=${sess}.usageData.value,` +
-  `Mv=(${sess}.currentMainLoopModel&&${sess}.currentMainLoopModel.value)||"",` +
+  `}catch(_){}};pf();_ccS.__ccBrPoll=setInterval(pf,15000);}` +
+  `var U=_ccS.usageData.value,` +
+  `Mv=(_ccS.currentMainLoopModel&&_ccS.currentMainLoopModel.value)||"",` +
   // session store records the git branch (worktree branch wins for --worktree sessions)
-  `BR=(${sess}.gitBranch&&${sess}.gitBranch.value)||"",` +
-  `WT=(${sess}.worktree&&${sess}.worktree.value)||null;` +
+  `BR=(_ccS.gitBranch&&_ccS.gitBranch.value)||"",` +
+  `WT=(_ccS.worktree&&_ccS.worktree.value)||null;` +
   `if(WT&&WT.branch)BR=WT.branch;` +
   // configured-value fallback ONLY for brand-new sessions (no messages yet): there the settings
   // value IS what the session will launch with. Resumed/reloaded sessions may carry in-session
   // /model overrides, so they stay hidden until the live session reports the real model.
-  `if(!Mv&&!(((${sess}.messages&&${sess}.messages.value)||[]).length)){` +
-  `var Ms=(${sess}.modelSelection&&${sess}.modelSelection.value)||"";` +
+  `if(!Mv&&!(((_ccS.messages&&_ccS.messages.value)||[]).length)){` +
+  `var Ms=(_ccS.modelSelection&&_ccS.modelSelection.value)||"";` +
   `if(Ms&&Ms!=="default")Mv=Ms.replace(/\\[1m\\]$/,"")}` +
   `var ` +
-  `EF=(${sess}.effortLevel&&${sess}.effortLevel.value)||"",` +
+  `EF=(_ccS.effortLevel&&_ccS.effortLevel.value)||"",` +
   // computed signal: thinkingLevelOverride ?? connection config thinkingLevel ?? "off"
-  `TH=(${sess}.thinkingLevel&&${sess}.thinkingLevel.value)||"",` +
+  `TH=(_ccS.thinkingLevel&&_ccS.thinkingLevel.value)||"",` +
   `W=U.contextWindow||0,T=U.totalTokens||0,CO=U.totalCost||0,` +
   `P=W>0?Math.round(Math.min(T/W*100,100)):0,` +
   `F=function(n){return n>=1e6?(n/1e6).toFixed(1).replace(/\\.0$/,"")+"M":n>=1e3?Math.round(n/1e3)+"k":""+n};` +
@@ -209,10 +214,10 @@ const chip = (jsx, sess) => `,(function(){` +
   `var st={color:c,background:"color-mix(in srgb, "+c+" 12%, transparent)",borderRadius:"999px",padding:"1px 7px",lineHeight:"16px"};` +
   // the context pill doubles as a progress bar: its background fills to the usage percentage
   `if(s[0]==="ctx"&&W>0)st.background="linear-gradient(90deg, color-mix(in srgb, "+c+" 30%, transparent) "+P+"%, color-mix(in srgb, "+c+" 10%, transparent) "+P+"%)";` +
-  `return ${jsx}("span",{"data-seg":s[0],style:st,children:s[1]})});` +
+  `return _ccJsx("span",{"data-seg":s[0],style:st,children:s[1]})});` +
   // gear leads the group, next to Claude's own footer buttons: always rendered, so
   // settings stay reachable even when every segment is hidden or empty
-  `kids.unshift(${jsx}("button",{type:"button",className:"cc-gear",title:"Status bar settings","aria-label":"Status bar settings",` +
+  `kids.unshift(_ccJsx("button",{type:"button",className:"cc-gear",title:"Status bar settings","aria-label":"Status bar settings",` +
   `onClick:function(ev){if(window.__ccStatus)window.__ccStatus.openMenu(ev)},` +
   `style:{cursor:"pointer",border:"none",background:"transparent",color:"inherit",fontSize:"13px",padding:"0 2px",opacity:"0.6",lineHeight:"1"},` +
   `children:"\\u2699"}));` +
@@ -223,8 +228,8 @@ const chip = (jsx, sess) => `,(function(){` +
   `var RS={fontSize:"11px",direction:"ltr",padding:"0 8px 6px",` +
   `display:"flex",flexWrap:"wrap",alignItems:"center",gap:"6px",color:"var(--vscode-descriptionForeground)"};` +
   `var A=(window.__ccStatus=window.__ccStatus||{});` +
-  `A.__mk=function(v){return ${jsx}("span",{className:"${MARKER} cc-"+v,style:v==="row"?RS:IS,children:kids})};` +
-  `return A.__mk("inline")})()`;
+  `A.__mk=function(v){return _ccJsx("span",{className:"${MARKER} cc-"+v,style:v==="row"?RS:IS,children:kids})};` +
+  `return A.__mk("inline")})(${jsx},${sess})`;
 
 // The own-row copy, added to the fragment that wraps the footer, just ahead of the row
 // Claude drops its model pill into at fit stage 2. Reuses the builder the inline copy

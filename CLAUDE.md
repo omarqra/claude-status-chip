@@ -25,6 +25,10 @@ running extension keeps using the old logic.
   so scope anything that colours or brands a control by semantics as well — the model switcher is
   the one with `[role=combobox]`. Geometry can stay shared; identity must not.
 
+- **Never reference a captured identifier by name inside injected code.** Pass the jsx factory and
+  the session store into the chip's IIFE as parameters. 2.1.270 minified the jsx factory to `F`,
+  our number formatter is `var F=...`, and the chip silently rendered the literal text `span`.
+
 ## Two injection points
 
 1. **Inline** — after the built-in usage button in the input footer. Required; a miss returns
@@ -61,6 +65,9 @@ node /path/to/patch-core.js && printf '\n' >> index.js && cat /tmp/rtl.js >> ind
 node --check index.js
 ```
 
+- **Verify it renders, not just that it applied.** `node --check` and marker counts both pass for
+  a chip that draws the wrong thing (see the `span` bug above) — after a Claude update, look at the
+  panel, or ask the user for a screenshot, before calling it done or shipping a release.
 - `run()` no-ops when the marker is present, so a stale patch must be undone by restoring the
   backup first.
 - Count matches with `grep -o -F 'pat' index.js | wc -l`. `grep -c` counts *lines*, and the bundle
