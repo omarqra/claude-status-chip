@@ -111,8 +111,13 @@ const runtime = [
   // move our chip to its own row -- the inline copy goes display:none, which takes
   // our width out of Claude's measurement, and the footer lays out natively again.
   'var BLU="var(--vscode-charts-blue,#4fc1ff)";',
-  'var MCSS="[class*=modelPill_]{min-height:0;height:18px;margin-left:0;padding:1px 8px;font-size:11px;line-height:16px;border-radius:999px;align-self:center;color:"+BLU+";background:color-mix(in srgb, "+BLU+" 12%, transparent)}"',
-  '+"[class*=modelPill_]:hover{background:color-mix(in srgb, "+BLU+" 22%, transparent)}"',
+  // Geometry goes to every pill sharing Claude's pill class -- the model switcher, and the
+  // agents pill 2.1.270 added next to it -- so the row keeps one height.
+  'var MCSS="[class*=modelPill_]{min-height:0;height:18px;margin-left:0;padding:1px 8px;font-size:11px;line-height:16px;border-radius:999px;align-self:center}"',
+  // The chip's model colour goes to the model switcher only: the agents pill is a different
+  // thing and painting it blue would read as a second model. role=combobox separates them.
+  '+"[class*=modelPill_][role=combobox]{color:"+BLU+";background:color-mix(in srgb, "+BLU+" 12%, transparent)}"',
+  '+"[class*=modelPill_][role=combobox]:hover{background:color-mix(in srgb, "+BLU+" 22%, transparent)}"',
   '+".cc-status-chip.cc-row{display:none!important}"',
   '+"body.cc-rowmode .cc-status-chip.cc-row{display:flex!important}"',
   '+"body.cc-rowmode .cc-status-chip.cc-inline{display:none!important}";',

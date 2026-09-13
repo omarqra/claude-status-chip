@@ -21,6 +21,9 @@ running extension keeps using the old logic.
   renamed props can't break a match.
 - Class names carry per-build hashes (`messagesContainer_a1b2c3`); select on the stable prefix
   (`[class*=modelPill_]`) and check the substring can't also match a sibling (`modelPillRow_`).
+- Claude also *reuses* its pill class for new controls (2.1.270's agents pill is a `modelPill`),
+  so scope anything that colours or brands a control by semantics as well — the model switcher is
+  the one with `[role=combobox]`. Geometry can stay shared; identity must not.
 
 ## Two injection points
 
