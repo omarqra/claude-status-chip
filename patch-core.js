@@ -129,14 +129,26 @@ const runtime = [
   // Inline <-> own-row switch, driven by Claude's own overflow verdict (data-fit-stage)
   // rather than by width math of ours. Going back inline needs the footer to grow well
   // past the width we bailed at, so a panel parked at the threshold can not oscillate.
-  'var st={mode:"inline",bail:0};',
+  'var st={mode:"inline",bail:0,giveUp:-1};',
+  // how many pills are actually drawn: a session that has not run a turn yet has none, and a
+  // row holding nothing but the gear is worse than no row at all
+  'function segs(el){var q=el.querySelectorAll("[data-seg]"),n=0,i;for(i=0;i<q.length;i++)if(q[i].getClientRects().length)n++;return n}',
+  'function setMode(m,ft){st.mode=m;document.body.classList.toggle("cc-rowmode",m==="row");poke(ft)}',
   'api.fit=function(){try{',
-  'var inl=document.querySelector(".cc-status-chip.cc-inline");',
-  'if(!inl||!document.querySelector(".cc-status-chip.cc-row"))return;',
+  'var inl=document.querySelector(".cc-status-chip.cc-inline"),row=document.querySelector(".cc-status-chip.cc-row");',
+  'if(!inl||!row)return;',
   'var ft=inl.parentElement;if(!ft)return;',
   'var w=ft.clientWidth||0,stage=+(ft.getAttribute("data-fit-stage")||0);',
-  'if(st.mode==="inline"){if(stage>=1){st.mode="row";st.bail=w;document.body.classList.add("cc-rowmode");poke(ft)}}',
-  'else if(w>st.bail+64){st.mode="inline";document.body.classList.remove("cc-rowmode");poke(ft)}',
+  'if(st.mode==="inline"){',
+  // only claim a row when we have something to put in it, and not at a width that already
+  // proved a row does not help
+  'if(stage>=1&&segs(inl)>0&&w>st.giveUp+64){st.bail=w;setMode("row",ft)}',
+  '}else{',
+  // still overflowing without our width in the sum -- Claude's own controls are what does not
+  // fit (cache indicator, agents pill, a long model label), so our row buys nothing: give it back
+  'if(stage>=1){st.giveUp=w;setMode("inline",ft)}',
+  'else if(segs(row)===0){setMode("inline",ft)}',
+  'else if(w>st.bail+64){setMode("inline",ft)}}',
   '}catch(_){}};',
   'setInterval(api.fit,700);',
   'api.applyZoom();api.applyCss();',
