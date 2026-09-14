@@ -59,18 +59,14 @@ const runtime = [
   'function save(p){try{localStorage.setItem(K,JSON.stringify(p))}catch(_){}}',
   'function styleEl(id){var el=document.getElementById(id);if(!el){el=document.createElement("style");el.id=id;(document.head||document.documentElement).appendChild(el)}return el}',
   // [key, menu label, dot color] — dot colors mirror the chip pill colors
-  'var SEGS=[["model","Model","var(--vscode-charts-blue,#4fc1ff)"],["branch","Branch","var(--vscode-charts-purple,#b180d7)"],["ctx","Context usage","var(--vscode-charts-green,#89d185)"],["effort","Effort","var(--vscode-charts-yellow,#cca700)"],["think","Thinking","var(--vscode-charts-orange,#d18616)"],["cost","Cost","var(--vscode-charts-yellow,#cca700)"]];',
+  'var SEGS=[["branch","Branch","var(--vscode-charts-purple,#b180d7)"],["ctx","Context usage","var(--vscode-charts-green,#89d185)"],["think","Thinking","var(--vscode-charts-orange,#d18616)"],["cost","Cost","var(--vscode-charts-yellow,#cca700)"]];',
   // never reassign: if the app rendered before this block ran, the chip already parked its
   // builder here, and replacing the object would strip it
   'var api=window.__ccStatus=window.__ccStatus||{};',
-  // Segments Claude's own UI already shows, so ours would only duplicate them. They ship
-  // off and stay available in the gear menu:
-  //   model  — its footer gained a clickable model pill (2.1.25x)
-  //   effort — that pill now carries the level too ("Opus 5  xhigh"), and 2.1.261 also put
-  //            it on the input box border, spelled out for 3s after every change
-  // Thinking stays on: Claude surfaces it nowhere, only inside the command menu.
-  'var DEF={model:false,effort:false};',
-  'api.visible=function(k){var v=api.prefs[k];return v===undefined?DEF[k]!==false:v!==false};',
+  // The chip only carries what Claude's own UI does not: model and effort used to live here
+  // too, but its footer pill spells out both ("Opus 5  High") and 2.1.261 put the effort level
+  // on the input box border as well, so they were pure duplication and are gone.
+  'api.visible=function(k){return api.prefs[k]!==false};',
   'api.prefs=load();',
   `api.zoom=function(){var z=api.prefs.zoom;return typeof z==="number"&&z>=0.8&&z<=1.6?z:${ZOOM}};`,
   // zoom the conversation text only — not the header or the input box. The hash suffix of
@@ -103,10 +99,14 @@ const runtime = [
   'dg.style.cssText="margin:8px 6px 0;padding-top:8px;border-top:1px solid var(--vscode-widget-border,#454545);opacity:.55;font-size:10px;line-height:1.6;word-break:break-all";',
   'var d=api.__diag||{},fe=btn&&btn.closest?btn.closest("[data-fit-stage]"):null;',
   'dg.textContent="pills "+(d.n||0)+" · branch "+(d.br||"-")+" · tok "+(d.t||0)+" · cost "+(d.co||0)',
-  '+" · think "+(d.th||"-")+" · model "+(d.mv||"-")',
+  '+" · think "+(d.th||"-")',
   '+" · layout "+((fe&&fe.parentElement&&fe.parentElement.getAttribute("data-cc-mode"))||"inline")',
   '+"/"+((fe&&fe.getAttribute("data-fit-stage"))||"?")',
   '+" · feed "+Object.keys(api.branches||{}).length+" · cwd "+(d.cw||"-");',
+  'var rw=document.querySelector(".cc-status-chip.cc-row"),hid=[];',
+  'for(var hi=0;hi<SEGS.length;hi++)if(!api.visible(SEGS[hi][0]))hid.push(SEGS[hi][0]);',
+  'dg.textContent+=" | built "+(d.keys||"-")+" · hidden "+(hid.join(",")||"-")',
+  '+" · row "+(rw?rw.children.length+" kids":"none");',
   'mnu.appendChild(dg);}',
   'document.body.appendChild(mnu);',
   // position above the gear button (menu and footer live outside the zoomed transcript,
@@ -144,30 +144,28 @@ const runtime = [
   // Inline <-> own-row switch, driven by Claude's own overflow verdict (data-fit-stage)
   // rather than by width math of ours. Going back inline needs the footer to grow well
   // past the width we bailed at, so a panel parked at the threshold can not oscillate.
-  // how many pills are actually drawn: a session that has not run a turn yet has none
-  'function segs(el){var q=el.querySelectorAll("[data-seg]"),n=0,i;for(i=0;i<q.length;i++)if(q[i].getClientRects().length)n++;return n}',
-  // The mode lives on the session's own container, never on <body>: the panel can hold more
-  // than one session's footer at a time, and a document-wide flag let an idle background
-  // session decide the layout of the one the user is looking at.
-  'function setMode(h,ft,m,s){s.mode=m;if(m==="row")h.setAttribute("data-cc-mode","row");else h.removeAttribute("data-cc-mode");poke(ft)}',
+  // Inline in Claude's toolbar while everything fits; its own row when it does not. The switch
+  // rides on Claude's own overflow verdict (data-fit-stage) rather than width maths of ours, and
+  // going back inline needs the footer to grow well past the width we left at, so a panel parked
+  // on the threshold cannot oscillate. The mode lives on the session's own container, never on
+  // <body>: the panel can hold several sessions' footers at once, and a document-wide flag let an
+  // idle background session decide the layout of the one the user was looking at.
+  'function setMode(h,ft,m,s){if(s.mode===m)return;s.mode=m;',
+  'if(m==="row")h.setAttribute("data-cc-mode","row");else h.removeAttribute("data-cc-mode");',
+  // one nudge so Claude re-measures a footer the inline copy just left or rejoined
+  'poke(ft)}',
   'function fitOne(inl){',
   'var ft=inl.parentElement;if(!ft)return;var h=ft.parentElement;if(!h)return;',
-  'var s=inl.__ccSt||(inl.__ccSt={mode:"inline",bail:0,giveUp:-1});',
+  'var s=inl.__ccSt||(inl.__ccSt={mode:"inline",bail:0});',
+  // no row copy means there is nothing to show, or an old Claude where the row anchor did not
+  // match: either way the inline copy has to stay visible or there would be no chip at all
   'var row=h.querySelector(".cc-status-chip.cc-row");',
-  // no row copy rendered means there is nothing to show, so never sit in row mode: that would
-  // hide the inline copy too and leave the session with no chip at all
-  'if(!row){if(s.mode!=="inline")setMode(h,ft,"inline",s);return}',
+  'if(!row){setMode(h,ft,"inline",s);return}',
   'var w=ft.clientWidth||0,stage=+(ft.getAttribute("data-fit-stage")||0);',
-  'if(s.mode==="inline"){',
-  // only claim a row when we have something to put in it, and not at a width that already
-  // proved a row does not help
-  'if(stage>=1&&segs(inl)>0&&w>s.giveUp+64){s.bail=w;setMode(h,ft,"row",s)}',
-  '}else{',
-  // still overflowing without our width in the sum -- Claude's own controls are what does not
-  // fit (cache indicator, agents pill, a long model label), so our row buys nothing: give it back
-  'if(stage>=1){s.giveUp=w;setMode(h,ft,"inline",s)}',
-  'else if(segs(row)===0){setMode(h,ft,"inline",s)}',
-  'else if(w>s.bail+64){setMode(h,ft,"inline",s)}}',
+  // stage >= 1 means Claude decided its footer overran. Once we drop to our own row our width
+  // leaves that sum, so it settles back to 0 and we stay put until the panel grows.
+  'if(s.mode!=="row"){if(stage>=1){s.bail=w;setMode(h,ft,"row",s)}}',
+  'else if(w>s.bail+64){setMode(h,ft,"inline",s)}',
   '}',
   'api.fit=function(){try{var a=document.querySelectorAll(".cc-status-chip.cc-inline"),i;for(i=0;i<a.length;i++)fitOne(a[i])}catch(_){}};',
   'setInterval(api.fit,700);',
@@ -242,50 +240,30 @@ const chip = (jsx, sess) => `,(function(_ccJsx,_ccS){` +
   `}catch(_){}};pf();_ccS.__ccBrPoll=setInterval(pf,5000);}` +
   `var CW=_ccS.__ccCw||(_ccS.cwd&&_ccS.cwd.value)||"",` +
   `U=_ccS.usageData.value,` +
-  `Mv=(_ccS.currentMainLoopModel&&_ccS.currentMainLoopModel.value)||"",` +
   // session store records the git branch (worktree branch wins for --worktree sessions)
   `BR=(_ccS.gitBranch&&_ccS.gitBranch.value)||"",` +
   `WT=(_ccS.worktree&&_ccS.worktree.value)||null;` +
   `if(WT&&WT.branch)BR=WT.branch;` +
-  // configured-value fallback ONLY for brand-new sessions (no messages yet): there the settings
-  // value IS what the session will launch with. Resumed/reloaded sessions may carry in-session
-  // /model overrides, so they stay hidden until the live session reports the real model.
-  `if(!Mv&&!(((_ccS.messages&&_ccS.messages.value)||[]).length)){` +
-  `var Ms=(_ccS.modelSelection&&_ccS.modelSelection.value)||"";` +
-  `if(Ms&&Ms!=="default")Mv=Ms.replace(/\\[1m\\]$/,"")}` +
-  `var ` +
-  `EF=(_ccS.effortLevel&&_ccS.effortLevel.value)||"",` +
   // computed signal: thinkingLevelOverride ?? connection config thinkingLevel ?? "off"
-  `TH=(_ccS.thinkingLevel&&_ccS.thinkingLevel.value)||"",` +
+  `var TH=(_ccS.thinkingLevel&&_ccS.thinkingLevel.value)||"",` +
   `W=U.contextWindow||0,T=U.totalTokens||0,CO=U.totalCost||0,` +
   `P=W>0?Math.round(Math.min(T/W*100,100)):0,` +
   `F=function(n){return n>=1e6?(n/1e6).toFixed(1).replace(/\\.0$/,"")+"M":n>=1e3?Math.round(n/1e3)+"k":""+n};` +
-  // "claude-opus-4-8" -> "Opus 4.8", "claude-fable-5" -> "Fable 5" (date-stamp segments dropped)
-  `var ps=Mv.replace(/^claude-/,"").split("-").filter(function(p){return !/^\\d{8}$/.test(p)}),MN=[],i;` +
-  `for(i=0;i<ps.length;i++){var p=ps[i];` +
-  `if(/^\\d+$/.test(p)&&MN.length&&/\\d$/.test(MN[MN.length-1]))MN[MN.length-1]+="."+p;` +
-  `else MN.push(p.charAt(0).toUpperCase()+p.slice(1));}` +
-  `MN=MN.join(" ");` +
   `var L=[];` +
-  `if(MN)L.push(["model",MN]);` +
   `if(BR)L.push(["branch","("+BR+")"]);` +
   // window size only arrives with the first end-of-turn result event — show bare tokens until then
   `if(W>0)L.push(["ctx",F(T)+"/"+F(W)+" ("+P+"%)"]);` +
   `else if(T>0)L.push(["ctx",F(T)+" tok"]);` +
-  // not gated on the model name any more: it stays empty until the live session reports it,
-  // which after a window reload kept the thinking pill hidden for a whole turn
-  `if(EF)L.push(["effort","e:"+EF]);` +
   `if(TH&&TH!=="off")L.push(["think",/^(on|default_on)$/.test(TH)?"think":"think:"+TH]);` +
   `if(CO>=0.005)L.push(["cost","$"+CO.toFixed(2)]);` +
   // theme-aware colors from the charts palette (adapt to light/dark themes)
   `var GRN="var(--vscode-charts-green,#89d185)",YEL="var(--vscode-charts-yellow,#cca700)",` +
-  `RED="var(--vscode-charts-red,#f14c4c)",BLU="var(--vscode-charts-blue,#4fc1ff)";` +
-  `var CH={model:BLU,branch:"var(--vscode-charts-purple,#b180d7)",think:"var(--vscode-charts-orange,#d18616)",cost:YEL};` +
+  `RED="var(--vscode-charts-red,#f14c4c)";` +
+  `var CH={branch:"var(--vscode-charts-purple,#b180d7)",think:"var(--vscode-charts-orange,#d18616)",cost:YEL};` +
   `var col=P>=80?RED:P>=50?YEL:GRN;` +
-  `var ecol=EF==="max"||EF==="xhigh"?RED:EF==="high"?YEL:EF==="medium"?BLU:GRN;` +
   `var A=(window.__ccStatus=window.__ccStatus||{});` +
   `var mkPill=function(s){` +
-  `var c=s[0]==="ctx"?col:s[0]==="effort"?ecol:CH[s[0]]||"var(--vscode-descriptionForeground)";` +
+  `var c=s[0]==="ctx"?col:CH[s[0]]||"var(--vscode-descriptionForeground)";` +
   `var st={color:c,background:"color-mix(in srgb, "+c+" 12%, transparent)",borderRadius:"999px",padding:"1px 7px",lineHeight:"16px"};` +
   // the context pill doubles as a progress bar: its background fills to the usage percentage
   `if(s[0]==="ctx"&&W>0)st.background="linear-gradient(90deg, color-mix(in srgb, "+c+" 30%, transparent) "+P+"%, color-mix(in srgb, "+c+" 10%, transparent) "+P+"%)";` +
@@ -300,18 +278,23 @@ const chip = (jsx, sess) => `,(function(_ccJsx,_ccS){` +
   // wraps instead of overflowing, since nothing else shares its line
   `var IS={fontSize:"11px",whiteSpace:"nowrap",direction:"ltr",alignSelf:"center",padding:"0 6px",` +
   `display:"inline-flex",alignItems:"center",gap:"6px",color:"var(--vscode-descriptionForeground)"};` +
-  `var RS={fontSize:"11px",direction:"ltr",padding:"0 8px 6px",` +
+  // inputContainerBackground is an absolutely positioned, opaque layer covering the whole input
+  // box (inset:0). Claude's own footer clears it with z-index:6 -- which applies because these are
+  // flex items -- so an unlifted row of ours paints UNDERNEATH it: full size, fully "visible",
+  // and completely invisible. Hence position+z-index here, not just for good measure.
+  `var RS={fontSize:"11px",direction:"ltr",padding:"0 8px 6px",position:"relative",zIndex:7,` +
   `display:"flex",flexWrap:"wrap",alignItems:"center",gap:"6px",color:"var(--vscode-descriptionForeground)"};` +
   `A.__mk=function(v){` +
   // hidden-by-preference segments are dropped here, not just in CSS, so "is there anything
   // to show" is a question the chip can answer before it decides to occupy a row
   // A.visible arrives with the runtime block; on a first render that beats it, fall back to the
   // same defaults, or the row fills with segments that CSS then hides -- a row of nothing
-  `var VIS=A.visible||function(k){return k!=="model"&&k!=="effort"};` +
+  `var VIS=A.visible||function(){return true};` +
   `var vis=[],q;for(q=0;q<L.length;q++)if(VIS(L[q][0]))vis.push(L[q]);` +
   // nothing to show -> render no row at all. A row holding a lone gear is worse than none,
   // and it used to appear on any session that had not finished a turn yet.
-  `A.__diag={n:vis.length,br:BR,mv:Mv,t:T,w:W,co:CO,th:TH,ef:EF,cw:CW};` +
+  `A.__diag={n:vis.length,br:BR,t:T,w:W,co:CO,th:TH,cw:CW,` +
+  `keys:vis.map(function(x){return x[0]}).join(",")};` +
   `if(v==="row"&&!vis.length)return null;` +
   `var kids=vis.map(mkPill);kids.unshift(GEAR);` +
   `return _ccJsx("span",{className:"${MARKER} cc-"+v,style:v==="row"?RS:IS,children:kids})};` +

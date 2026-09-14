@@ -48,11 +48,26 @@ The footer sums its children's widths and escalates `data-fit-stage` 0 → 1 (hi
 it out of that sum, then pokes the footer with a synchronous add+remove of a throwaway node to
 force a re-measure (the footer's MutationObserver watches childList/characterData, not attributes).
 
-## Segments Claude already shows go default-off, not deleted
+## The chip only carries what Claude's own UI does not
 
-`DEF` in the runtime holds them; they stay toggleable from the gear menu. Currently `model` and
-`effort` (Claude's model pill reads `Opus 5  xhigh`, and 2.1.261 also puts the level on the input
-box border). `think` stays on — Claude surfaces it nowhere outside the command menu.
+Model and effort lived here once; they are gone (1.3.0). Claude's footer pill spells out both
+(`Opus 5  High`) and 2.1.261 also put the effort level on the input box border, so ours were pure
+duplication — and while they were merely default-off, one stray click in the gear menu brought the
+duplicate back. What is left is branch, context usage, thinking and cost: thinking is buried in the
+command menu, the rest Claude does not surface at all.
+
+## Claude paints an opaque layer over the whole input box
+
+`inputContainerBackground` is `position:absolute; inset:0` inside the input container. Claude's own
+footer clears it with `z-index:6` — which applies because these are flex items, no positioning
+needed — so **anything injected as a sibling of the footer must lift itself too**, or it paints
+underneath and is invisible. The chip's own row carries `position:relative; z-index:7` for exactly
+this reason.
+
+This one cost hours because every check said the chip was fine: it was in the DOM, `display:flex`,
+`visibility:visible`, `opacity:1`, real width and height at sensible coordinates, full text content
+— and completely unseen. **Computed style and geometry cannot tell you what is painted on top.**
+When the numbers all look right and the user still sees nothing, suspect paint order.
 
 ## The webview is sandboxed — the branch comes from outside
 
@@ -84,9 +99,10 @@ node /path/to/patch-core.js && printf '\n' >> index.js && cat /tmp/rtl.js >> ind
 node --check index.js
 ```
 
-- **The gear menu prints a diagnostics line when the chip is empty** — pills, branch, tokens,
-  cost, thinking, model, layout/fit stage, feed size, cwd. Ask for a screenshot of it instead of
-  guessing why nothing is showing.
+- **The gear menu prints a diagnostics line when the chip is empty** — pills, branch, tokens, cost,
+  thinking, layout, feed size, cwd, which segments were built and which CSS hides. Ask for a
+  screenshot of it instead of guessing why nothing is showing; add geometry (`getBoundingClientRect`
+  plus computed display/visibility/opacity of the row and a pill) temporarily when it is not enough.
 - **Verify it renders, not just that it applied.** `node --check` and marker counts both pass for
   a chip that draws the wrong thing (see the `span` bug above) — after a Claude update, look at the
   panel, or ask the user for a screenshot, before calling it done or shipping a release.

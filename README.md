@@ -13,7 +13,7 @@ Adds an always-visible, colored status chip to the **Claude Code** panel's input
 ![The status chip in the Claude Code panel: model, branch, context usage, effort and cost pills next to the input box](screenshot.png)
 
 ```
-⚙ [(main)] [487k/1M (49%)] [think] [$12.35]  [Opus 5  xhigh]
+⚙ [(main)] [487k/1M (49%)] [think] [$12.35]
 ```
 
 - **Git branch**, live — updates within seconds of a checkout (purple), per worktree
@@ -22,16 +22,14 @@ Adds an always-visible, colored status chip to the **Claude Code** panel's input
 - **think** indicator when extended thinking is on (orange) — Claude surfaces this nowhere else,
   it's buried in the command menu
 - **Session cost** when the API reports one (yellow)
-- **Model** and **reasoning effort** — off by default, because Claude's own model pill now shows
-  both (`Opus 5  xhigh`). Turn either back on from the gear menu.
 - **⚙ gear menu**: show/hide any item + zoom the conversation transcript only (80%–160%) —
   the panel header and input box stay at normal size. Preferences persist.
 
 It merges into Claude's toolbar rather than crowding it: Claude's own model pill is restyled to
-match the chip (and still opens the model switcher), anything Claude already shows is off by
-default, and when the panel gets too narrow for one row the chip moves to its own row underneath —
-Claude's toolbar then measures and lays itself out exactly as it would without the extension,
-instead of collapsing its buttons to icons.
+match the chip (and still opens the model switcher), the chip carries nothing Claude already shows
+— its pill spells out the model and effort level itself — and when the panel gets too narrow for
+one row the chip moves to its own row underneath. Claude's toolbar then measures and lays itself
+out exactly as it would without the extension, instead of collapsing its buttons to icons.
 
 Claude's panel is not allowed to run git or fetch anything (its webview runs under
 `default-src 'none'`), so from 1.2.0 the extension publishes the branches from the editor side —
@@ -60,7 +58,7 @@ Stock VS Code reads Microsoft's marketplace, where this extension is not publish
 from Open VSX and install it manually:
 
 ```
-curl -LO https://open-vsx.org/api/omarkara/claude-status-chip/1.2.1/file/omarkara.claude-status-chip-1.2.1.vsix
+curl -LO https://open-vsx.org/api/omarkara/claude-status-chip/1.3.0/file/omarkara.claude-status-chip-1.3.0.vsix
 code --install-extension omarkara.claude-status-chip-1.1.3.vsix
 ```
 
