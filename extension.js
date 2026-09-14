@@ -1,5 +1,6 @@
 // Claude Status Chip — keeps a status-chip patch applied to the Claude Code
-// VSCode extension's webview across its auto-updates.
+// VSCode extension's webview across its auto-updates, and feeds it the live git
+// branch, which the webview itself is no longer allowed to look up (branch-feed.js).
 // The patch logic lives in patch-core.js (bundled). If the user keeps an
 // editable copy at ~/.claude/patch-claude-vscode-status.js, that one wins so
 // power users can tweak the chip without reinstalling this extension.
@@ -7,6 +8,7 @@ const path = require("path");
 const os = require("os");
 const fs = require("fs");
 const vscode = require("vscode");
+const branchFeed = require("./branch-feed.js");
 
 const CANDIDATES = [
   path.join(os.homedir(), ".claude", "patch-claude-vscode-status.js"),
@@ -54,7 +56,13 @@ function activate(context) {
   // self-heal: catches Claude extension auto-updates that land while VSCode runs,
   // and any other patcher rewriting the bundle over ours
   const timer = setInterval(() => handle(runPatch(), { silentAlready: true }), 60000);
-  context.subscriptions.push({ dispose: () => clearInterval(timer) });
+  // the panel can no longer run git itself, so publish the branches from out here where we
+  // still can -- read fresh every tick, so opening a folder needs no restart
+  const stopFeed = branchFeed.start(
+    () => (vscode.workspace.workspaceFolders || []).map((f) => f.uri.fsPath),
+    4000,
+  );
+  context.subscriptions.push({ dispose: () => { clearInterval(timer); stopFeed(); } });
 }
 
 function deactivate() {}

@@ -54,6 +54,21 @@ force a re-measure (the footer's MutationObserver watches childList/characterDat
 `effort` (Claude's model pill reads `Opus 5  xhigh`, and 2.1.261 also puts the level on the input
 box border). `think` stays on — Claude surfaces it nowhere outside the command menu.
 
+## The webview is sandboxed — the branch comes from outside
+
+2.1.270 removed `connection.exec`, and the panel's CSP is `default-src 'none'` with no
+`connect-src`, so injected code can neither run git nor fetch a file. The one channel left is
+`style-src <extension folder>`: `branch-feed.js` (extension host, no such limits) reads `.git/HEAD`
+and every `.git/worktrees/*/HEAD` and writes them into `cc-status-branch.css` next to Claude's
+bundle as a `--cc-branches` custom property; the runtime re-points a `<link>` at it every 5s and
+reads it back with `getComputedStyle`, then feeds the session's own `gitBranch` signal so React
+re-renders. Sessions are matched to a branch by longest path prefix of their `cwd`, which is what
+makes per-worktree branches work. Other windows write the same file, so writes merge, never clobber.
+
+**`patch-core.js` alone is not enough any more.** A user on an old installed version but a fresh
+`~/.claude/patch-claude-vscode-status.js` gets a chip that looks for a feed nobody writes; the
+branch just stays empty, which is the intended degradation.
+
 ## Testing a re-patch locally
 
 ```bash

@@ -16,7 +16,7 @@ Adds an always-visible, colored status chip to the **Claude Code** panel's input
 ⚙ [(main)] [487k/1M (49%)] [think] [$12.35]  [Opus 5  xhigh]
 ```
 
-- **Git branch**, live — updates within seconds of a checkout (purple)
+- **Git branch**, live — updates within seconds of a checkout (purple), per worktree
 - **Context usage** as `used/window (%)` — the pill fills like a progress bar and turns
   green → yellow (≥50%) → red (≥80%)
 - **think** indicator when extended thinking is on (orange) — Claude surfaces this nowhere else,
@@ -32,6 +32,11 @@ match the chip (and still opens the model switcher), anything Claude already sho
 default, and when the panel gets too narrow for one row the chip moves to its own row underneath —
 Claude's toolbar then measures and lays itself out exactly as it would without the extension,
 instead of collapsing its buttons to icons.
+
+Claude's panel is not allowed to run git or fetch anything (its webview runs under
+`default-src 'none'`), so from 1.2.0 the extension publishes the branches from the editor side —
+reading `.git/HEAD` directly, no git process — and the chip reads them back. Sessions running in
+different worktrees of one repo each show their own branch.
 
 ## Why this exists
 
@@ -55,7 +60,7 @@ Stock VS Code reads Microsoft's marketplace, where this extension is not publish
 from Open VSX and install it manually:
 
 ```
-curl -LO https://open-vsx.org/api/omarkara/claude-status-chip/1.1.4/file/omarkara.claude-status-chip-1.1.4.vsix
+curl -LO https://open-vsx.org/api/omarkara/claude-status-chip/1.2.0/file/omarkara.claude-status-chip-1.2.0.vsix
 code --install-extension omarkara.claude-status-chip-1.1.3.vsix
 ```
 

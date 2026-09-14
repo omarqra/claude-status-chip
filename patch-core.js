@@ -119,8 +119,8 @@ const runtime = [
   '+"[class*=modelPill_][role=combobox]{color:"+BLU+";background:color-mix(in srgb, "+BLU+" 12%, transparent)}"',
   '+"[class*=modelPill_][role=combobox]:hover{background:color-mix(in srgb, "+BLU+" 22%, transparent)}"',
   '+".cc-status-chip.cc-row{display:none!important}"',
-  '+"body.cc-rowmode .cc-status-chip.cc-row{display:flex!important}"',
-  '+"body.cc-rowmode .cc-status-chip.cc-inline{display:none!important}";',
+  '+"[data-cc-mode=row] .cc-status-chip.cc-row{display:flex!important}"',
+  '+"[data-cc-mode=row] .cc-status-chip.cc-inline{display:none!important}";',
   'styleEl("cc-merge-style").textContent=MCSS;',
   // Nudge Claude's footer into re-measuring: it watches its subtree for childList
   // changes, and a CSS-only visibility flip wouldn't wake it. The node is added and
@@ -129,28 +129,61 @@ const runtime = [
   // Inline <-> own-row switch, driven by Claude's own overflow verdict (data-fit-stage)
   // rather than by width math of ours. Going back inline needs the footer to grow well
   // past the width we bailed at, so a panel parked at the threshold can not oscillate.
-  'var st={mode:"inline",bail:0,giveUp:-1};',
-  // how many pills are actually drawn: a session that has not run a turn yet has none, and a
-  // row holding nothing but the gear is worse than no row at all
+  // how many pills are actually drawn: a session that has not run a turn yet has none
   'function segs(el){var q=el.querySelectorAll("[data-seg]"),n=0,i;for(i=0;i<q.length;i++)if(q[i].getClientRects().length)n++;return n}',
-  'function setMode(m,ft){st.mode=m;document.body.classList.toggle("cc-rowmode",m==="row");poke(ft)}',
-  'api.fit=function(){try{',
-  'var inl=document.querySelector(".cc-status-chip.cc-inline"),row=document.querySelector(".cc-status-chip.cc-row");',
-  'if(!inl||!row)return;',
-  'var ft=inl.parentElement;if(!ft)return;',
+  // The mode lives on the session's own container, never on <body>: the panel can hold more
+  // than one session's footer at a time, and a document-wide flag let an idle background
+  // session decide the layout of the one the user is looking at.
+  'function setMode(h,ft,m,s){s.mode=m;if(m==="row")h.setAttribute("data-cc-mode","row");else h.removeAttribute("data-cc-mode");poke(ft)}',
+  'function fitOne(inl){',
+  'var ft=inl.parentElement;if(!ft)return;var h=ft.parentElement;if(!h)return;',
+  'var s=inl.__ccSt||(inl.__ccSt={mode:"inline",bail:0,giveUp:-1});',
+  'var row=h.querySelector(".cc-status-chip.cc-row");',
+  // no row copy rendered means there is nothing to show, so never sit in row mode: that would
+  // hide the inline copy too and leave the session with no chip at all
+  'if(!row){if(s.mode!=="inline")setMode(h,ft,"inline",s);return}',
   'var w=ft.clientWidth||0,stage=+(ft.getAttribute("data-fit-stage")||0);',
-  'if(st.mode==="inline"){',
+  'if(s.mode==="inline"){',
   // only claim a row when we have something to put in it, and not at a width that already
   // proved a row does not help
-  'if(stage>=1&&segs(inl)>0&&w>st.giveUp+64){st.bail=w;setMode("row",ft)}',
+  'if(stage>=1&&segs(inl)>0&&w>s.giveUp+64){s.bail=w;setMode(h,ft,"row",s)}',
   '}else{',
   // still overflowing without our width in the sum -- Claude's own controls are what does not
   // fit (cache indicator, agents pill, a long model label), so our row buys nothing: give it back
-  'if(stage>=1){st.giveUp=w;setMode("inline",ft)}',
-  'else if(segs(row)===0){setMode("inline",ft)}',
-  'else if(w>st.bail+64){setMode("inline",ft)}}',
-  '}catch(_){}};',
+  'if(stage>=1){s.giveUp=w;setMode(h,ft,"inline",s)}',
+  'else if(segs(row)===0){setMode(h,ft,"inline",s)}',
+  'else if(w>s.bail+64){setMode(h,ft,"inline",s)}}',
+  '}',
+  'api.fit=function(){try{var a=document.querySelectorAll(".cc-status-chip.cc-inline"),i;for(i=0;i<a.length;i++)fitOne(a[i])}catch(_){}};',
   'setInterval(api.fit,700);',
+  // --- branch feed ------------------------------------------------------------
+  // The webview can no longer run git (2.1.270 dropped the exec RPC) and its CSP is
+  // default-src 'none' with no connect-src, so nothing can be fetched either. Stylesheets
+  // from Claude's own extension folder ARE allowed, so the companion extension parks the
+  // branches there as a custom property (see branch-feed.js) and we read them back.
+  'api.branches={};',
+  'api.branchFor=function(cwd){var ks=Object.keys(api.branches);',
+  // no cwd yet (session still starting) and only one project in play: that is the answer
+  'if(!cwd)return ks.length===1?api.branches[ks[0]]:"";',
+  // longest matching prefix, so a session inside a worktree gets the worktree's branch
+  'var best="",bl=-1,i,k;for(i=0;i<ks.length;i++){k=ks[i];',
+  'if((cwd===k||cwd.indexOf(k+"/")===0)&&k.length>bl){bl=k.length;best=api.branches[k]}}return best};',
+  'api.readBranches=function(){try{',
+  'var el=document.getElementById("cc-branch-src");',
+  'if(!el){var ls=document.querySelectorAll("link[rel=stylesheet]"),base="",i;',
+  // build the URL from Claude's own stylesheet: same folder, same webview origin, so it
+  // satisfies style-src without us having to know how VSCode spells resource URIs
+  'for(i=0;i<ls.length;i++)if(ls[i].href&&ls[i].href.indexOf("index.css")>-1){base=ls[i].href;break}',
+  'if(!base)return;el=document.createElement("link");el.id="cc-branch-src";el.rel="stylesheet";',
+  'el.href=base.replace(/index\\.css[^/]*$/,"cc-status-branch.css")+"?v="+Date.now();',
+  '(document.head||document.documentElement).appendChild(el)}',
+  'var raw=(getComputedStyle(document.documentElement).getPropertyValue("--cc-branches")||"").trim().replace(/^"|"$/g,"");',
+  'var m={},ps=raw?raw.split(","):[],j;',
+  'for(j=0;j<ps.length;j++){var kv=ps[j].split("|");if(kv.length===2)m[decodeURIComponent(kv[0])]=decodeURIComponent(kv[1])}',
+  'api.branches=m;}catch(_){}};',
+  // re-point the link at a fresh URL so a checkout shows up within a few seconds
+  'api.pollBranches=function(){var el=document.getElementById("cc-branch-src");if(el)el.href=el.href.replace(/\\?v=\\d+$/,"?v="+Date.now());api.readBranches()};',
+  'setInterval(api.pollBranches,5000);api.readBranches();',
   'api.applyZoom();api.applyCss();',
   '}catch(_){}})();',
 ].join("\n");
@@ -171,16 +204,26 @@ const runtime = [
 // toggling needs no React re-render. The gear button always renders.
 // ---------------------------------------------------------------------------
 const chip = (jsx, sess) => `,(function(_ccJsx,_ccS){` +
-  // live branch detection: poll `git symbolic-ref` via the host's exec RPC and feed the
-  // session's own gitBranch signal, so the chip (and session list) update on branch switch.
+  // Live branch detection: poll `git symbolic-ref` via the host's exec RPC and feed the
+  // session's own gitBranch signal. 2.1.270 REMOVED exec from the connection, and the webview
+  // CSP has no connect-src, so there is no way left to ask git anything from in here -- the
+  // guard below simply stops firing and the branch falls back to whatever Claude persisted
+  // in the session's own gitBranch. Kept for older Claude versions, which still have exec.
   // One interval per session store; the webview dies with the panel, so no cleanup needed.
   `if(!_ccS.__ccBrPoll){var pf=function(){try{` +
+  // the session's own directory decides which branch is its own, so sessions in different
+  // worktrees of one repo each show theirs
+  `var st=window.__ccStatus,cw=(_ccS.cwd&&_ccS.cwd.value)||"",` +
+  `wt=(_ccS.worktree&&_ccS.worktree.value)||null;if(wt&&wt.path)cw=wt.path;` +
+  `var b=st&&st.branchFor?st.branchFor(cw):"";` +
+  `if(b){if(_ccS.gitBranch&&_ccS.gitBranch.value!==b)_ccS.gitBranch.value=b;return}` +
+  // older Claude builds still have the exec RPC, so keep using it when the feed is silent
   `var cn=_ccS.connection&&_ccS.connection.value;` +
   `if(cn&&cn.exec)cn.exec("git",["symbolic-ref","--short","HEAD"]).then(function(r){` +
-  `var b=(r&&r.stdout||"").trim();` +
-  `if(b&&_ccS.gitBranch&&_ccS.gitBranch.value!==b)_ccS.gitBranch.value=b` +
+  `var b2=(r&&r.stdout||"").trim();` +
+  `if(b2&&_ccS.gitBranch&&_ccS.gitBranch.value!==b2)_ccS.gitBranch.value=b2` +
   `}).catch(function(){})` +
-  `}catch(_){}};pf();_ccS.__ccBrPoll=setInterval(pf,15000);}` +
+  `}catch(_){}};pf();_ccS.__ccBrPoll=setInterval(pf,5000);}` +
   `var U=_ccS.usageData.value,` +
   `Mv=(_ccS.currentMainLoopModel&&_ccS.currentMainLoopModel.value)||"",` +
   // session store records the git branch (worktree branch wins for --worktree sessions)
@@ -212,8 +255,10 @@ const chip = (jsx, sess) => `,(function(_ccJsx,_ccS){` +
   // window size only arrives with the first end-of-turn result event — show bare tokens until then
   `if(W>0)L.push(["ctx",F(T)+"/"+F(W)+" ("+P+"%)"]);` +
   `else if(T>0)L.push(["ctx",F(T)+" tok"]);` +
-  `if(Mv&&EF)L.push(["effort","e:"+EF]);` +
-  `if(Mv&&TH&&TH!=="off")L.push(["think",/^(on|default_on)$/.test(TH)?"think":"think:"+TH]);` +
+  // not gated on the model name any more: it stays empty until the live session reports it,
+  // which after a window reload kept the thinking pill hidden for a whole turn
+  `if(EF)L.push(["effort","e:"+EF]);` +
+  `if(TH&&TH!=="off")L.push(["think",/^(on|default_on)$/.test(TH)?"think":"think:"+TH]);` +
   `if(CO>=0.005)L.push(["cost","$"+CO.toFixed(2)]);` +
   // theme-aware colors from the charts palette (adapt to light/dark themes)
   `var GRN="var(--vscode-charts-green,#89d185)",YEL="var(--vscode-charts-yellow,#cca700)",` +
@@ -221,26 +266,34 @@ const chip = (jsx, sess) => `,(function(_ccJsx,_ccS){` +
   `var CH={model:BLU,branch:"var(--vscode-charts-purple,#b180d7)",think:"var(--vscode-charts-orange,#d18616)",cost:YEL};` +
   `var col=P>=80?RED:P>=50?YEL:GRN;` +
   `var ecol=EF==="max"||EF==="xhigh"?RED:EF==="high"?YEL:EF==="medium"?BLU:GRN;` +
-  `var kids=L.map(function(s){` +
+  `var A=(window.__ccStatus=window.__ccStatus||{});` +
+  `var mkPill=function(s){` +
   `var c=s[0]==="ctx"?col:s[0]==="effort"?ecol:CH[s[0]]||"var(--vscode-descriptionForeground)";` +
   `var st={color:c,background:"color-mix(in srgb, "+c+" 12%, transparent)",borderRadius:"999px",padding:"1px 7px",lineHeight:"16px"};` +
   // the context pill doubles as a progress bar: its background fills to the usage percentage
   `if(s[0]==="ctx"&&W>0)st.background="linear-gradient(90deg, color-mix(in srgb, "+c+" 30%, transparent) "+P+"%, color-mix(in srgb, "+c+" 10%, transparent) "+P+"%)";` +
-  `return _ccJsx("span",{"data-seg":s[0],style:st,children:s[1]})});` +
-  // gear leads the group, next to Claude's own footer buttons: always rendered, so
+  `return _ccJsx("span",{"data-seg":s[0],style:st,children:s[1]})};` +
+  // gear leads the group, next to Claude's own footer buttons: always rendered inline, so
   // settings stay reachable even when every segment is hidden or empty
-  `kids.unshift(_ccJsx("button",{type:"button",className:"cc-gear",title:"Status bar settings","aria-label":"Status bar settings",` +
+  `var GEAR=_ccJsx("button",{type:"button",className:"cc-gear",title:"Status bar settings","aria-label":"Status bar settings",` +
   `onClick:function(ev){if(window.__ccStatus)window.__ccStatus.openMenu(ev)},` +
   `style:{cursor:"pointer",border:"none",background:"transparent",color:"inherit",fontSize:"13px",padding:"0 2px",opacity:"0.6",lineHeight:"1"},` +
-  `children:"\\u2699"}));` +
+  `children:"\\u2699"});` +
   // inline sits centred in Claude's toolbar row; the own-row copy spans the panel and
   // wraps instead of overflowing, since nothing else shares its line
   `var IS={fontSize:"11px",whiteSpace:"nowrap",direction:"ltr",alignSelf:"center",padding:"0 6px",` +
   `display:"inline-flex",alignItems:"center",gap:"6px",color:"var(--vscode-descriptionForeground)"};` +
   `var RS={fontSize:"11px",direction:"ltr",padding:"0 8px 6px",` +
   `display:"flex",flexWrap:"wrap",alignItems:"center",gap:"6px",color:"var(--vscode-descriptionForeground)"};` +
-  `var A=(window.__ccStatus=window.__ccStatus||{});` +
-  `A.__mk=function(v){return _ccJsx("span",{className:"${MARKER} cc-"+v,style:v==="row"?RS:IS,children:kids})};` +
+  `A.__mk=function(v){` +
+  // hidden-by-preference segments are dropped here, not just in CSS, so "is there anything
+  // to show" is a question the chip can answer before it decides to occupy a row
+  `var vis=[],q;for(q=0;q<L.length;q++)if(!A.visible||A.visible(L[q][0]))vis.push(L[q]);` +
+  // nothing to show -> render no row at all. A row holding a lone gear is worse than none,
+  // and it used to appear on any session that had not finished a turn yet.
+  `if(v==="row"&&!vis.length)return null;` +
+  `var kids=vis.map(mkPill);kids.unshift(GEAR);` +
+  `return _ccJsx("span",{className:"${MARKER} cc-"+v,style:v==="row"?RS:IS,children:kids})};` +
   `return A.__mk("inline")})(${jsx},${sess})`;
 
 // The own-row copy, added to the fragment that wraps the footer, just ahead of the row
