@@ -15,7 +15,9 @@ const os = require("os");
 
 const CSS_FILE = "cc-status-branch.css";
 const PROP = "--cc-branches";
-const MAX_ENTRIES = 40;
+// Generous on purpose: one project with 40 worktrees used to fill a 40-entry cap by itself and
+// evict every other window's folder from the shared file, which read as "the branch vanished".
+const MAX_ENTRIES = 400;
 
 function webviewDir() {
   const root = path.join(os.homedir(), ".vscode", "extensions");
@@ -110,9 +112,15 @@ function render(entries) {
 
 // Other VSCode windows write the same file for their own folders, so merge rather than
 // overwrite: ours win, theirs are kept, and each window refreshes its own within seconds.
+// Entries whose worktree is gone are dropped, which is what keeps the file from growing for
+// ever now that the cap is high.
 function merge(existing, mine) {
   const out = mine.slice();
-  for (const [p, b] of existing) if (!out.some(([q]) => q === p)) out.push([p, b]);
+  for (const [p, b] of existing) {
+    if (out.some(([q]) => q === p)) continue;
+    if (!fs.existsSync(p)) continue;
+    out.push([p, b]);
+  }
   return out;
 }
 

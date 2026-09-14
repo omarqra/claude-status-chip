@@ -60,7 +60,9 @@ const runtime = [
   'function styleEl(id){var el=document.getElementById(id);if(!el){el=document.createElement("style");el.id=id;(document.head||document.documentElement).appendChild(el)}return el}',
   // [key, menu label, dot color] — dot colors mirror the chip pill colors
   'var SEGS=[["model","Model","var(--vscode-charts-blue,#4fc1ff)"],["branch","Branch","var(--vscode-charts-purple,#b180d7)"],["ctx","Context usage","var(--vscode-charts-green,#89d185)"],["effort","Effort","var(--vscode-charts-yellow,#cca700)"],["think","Thinking","var(--vscode-charts-orange,#d18616)"],["cost","Cost","var(--vscode-charts-yellow,#cca700)"]];',
-  'var api=window.__ccStatus={};',
+  // never reassign: if the app rendered before this block ran, the chip already parked its
+  // builder here, and replacing the object would strip it
+  'var api=window.__ccStatus=window.__ccStatus||{};',
   // Segments Claude's own UI already shows, so ours would only duplicate them. They ship
   // off and stay available in the gear menu:
   //   model  — its footer gained a clickable model pill (2.1.25x)
@@ -93,6 +95,19 @@ const runtime = [
   'function zb(t,d){var b=document.createElement("button");b.type="button";b.className="cc-zbtn";b.textContent=t;b.title=d>0?"Zoom in":"Zoom out";b.onclick=function(){var nz=Math.round(Math.min(1.6,Math.max(0.8,api.zoom()+d))*100)/100;api.setZoom(nz);zv.textContent=Math.round(nz*100)+"%"};return b}',
   'zv.textContent=Math.round(api.zoom()*100)+"%";',
   'zr.appendChild(zb("-",-0.05));zr.appendChild(zv);zr.appendChild(zb("+",0.05));mnu.appendChild(zr);',
+  // Why is nothing showing? This answers it without a devtools console: what the chip read,
+  // how many pills survived, which layout it chose, and how many branches the feed delivered.
+  // Only when the chip is empty -- that is the only time anyone wants to read it.
+  'if(!(api.__diag&&api.__diag.n)){',
+  'var dg=document.createElement("div");',
+  'dg.style.cssText="margin:8px 6px 0;padding-top:8px;border-top:1px solid var(--vscode-widget-border,#454545);opacity:.55;font-size:10px;line-height:1.6;word-break:break-all";',
+  'var d=api.__diag||{},fe=btn&&btn.closest?btn.closest("[data-fit-stage]"):null;',
+  'dg.textContent="pills "+(d.n||0)+" · branch "+(d.br||"-")+" · tok "+(d.t||0)+" · cost "+(d.co||0)',
+  '+" · think "+(d.th||"-")+" · model "+(d.mv||"-")',
+  '+" · layout "+((fe&&fe.parentElement&&fe.parentElement.getAttribute("data-cc-mode"))||"inline")',
+  '+"/"+((fe&&fe.getAttribute("data-fit-stage"))||"?")',
+  '+" · feed "+Object.keys(api.branches||{}).length+" · cwd "+(d.cw||"-");',
+  'mnu.appendChild(dg);}',
   'document.body.appendChild(mnu);',
   // position above the gear button (menu and footer live outside the zoomed transcript,
   // so no zoom coordinate correction is needed)
@@ -215,6 +230,7 @@ const chip = (jsx, sess) => `,(function(_ccJsx,_ccS){` +
   // worktrees of one repo each show theirs
   `var st=window.__ccStatus,cw=(_ccS.cwd&&_ccS.cwd.value)||"",` +
   `wt=(_ccS.worktree&&_ccS.worktree.value)||null;if(wt&&wt.path)cw=wt.path;` +
+  `_ccS.__ccCw=cw;` +
   `var b=st&&st.branchFor?st.branchFor(cw):"";` +
   `if(b){if(_ccS.gitBranch&&_ccS.gitBranch.value!==b)_ccS.gitBranch.value=b;return}` +
   // older Claude builds still have the exec RPC, so keep using it when the feed is silent
@@ -224,7 +240,8 @@ const chip = (jsx, sess) => `,(function(_ccJsx,_ccS){` +
   `if(b2&&_ccS.gitBranch&&_ccS.gitBranch.value!==b2)_ccS.gitBranch.value=b2` +
   `}).catch(function(){})` +
   `}catch(_){}};pf();_ccS.__ccBrPoll=setInterval(pf,5000);}` +
-  `var U=_ccS.usageData.value,` +
+  `var CW=_ccS.__ccCw||(_ccS.cwd&&_ccS.cwd.value)||"",` +
+  `U=_ccS.usageData.value,` +
   `Mv=(_ccS.currentMainLoopModel&&_ccS.currentMainLoopModel.value)||"",` +
   // session store records the git branch (worktree branch wins for --worktree sessions)
   `BR=(_ccS.gitBranch&&_ccS.gitBranch.value)||"",` +
@@ -288,9 +305,13 @@ const chip = (jsx, sess) => `,(function(_ccJsx,_ccS){` +
   `A.__mk=function(v){` +
   // hidden-by-preference segments are dropped here, not just in CSS, so "is there anything
   // to show" is a question the chip can answer before it decides to occupy a row
-  `var vis=[],q;for(q=0;q<L.length;q++)if(!A.visible||A.visible(L[q][0]))vis.push(L[q]);` +
+  // A.visible arrives with the runtime block; on a first render that beats it, fall back to the
+  // same defaults, or the row fills with segments that CSS then hides -- a row of nothing
+  `var VIS=A.visible||function(k){return k!=="model"&&k!=="effort"};` +
+  `var vis=[],q;for(q=0;q<L.length;q++)if(VIS(L[q][0]))vis.push(L[q]);` +
   // nothing to show -> render no row at all. A row holding a lone gear is worse than none,
   // and it used to appear on any session that had not finished a turn yet.
+  `A.__diag={n:vis.length,br:BR,mv:Mv,t:T,w:W,co:CO,th:TH,ef:EF,cw:CW};` +
   `if(v==="row"&&!vis.length)return null;` +
   `var kids=vis.map(mkPill);kids.unshift(GEAR);` +
   `return _ccJsx("span",{className:"${MARKER} cc-"+v,style:v==="row"?RS:IS,children:kids})};` +

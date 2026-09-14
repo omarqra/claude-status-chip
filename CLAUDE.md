@@ -65,6 +65,10 @@ reads it back with `getComputedStyle`, then feeds the session's own `gitBranch` 
 re-renders. Sessions are matched to a branch by longest path prefix of their `cwd`, which is what
 makes per-worktree branches work. Other windows write the same file, so writes merge, never clobber.
 
+One file is shared by every editor window, so writes merge and the cap has to be generous: one
+project with 40 worktrees filled a 40-entry cap by itself and evicted every other window's folder,
+which reads exactly like "the branch vanished". Entries for paths that no longer exist are pruned.
+
 **`patch-core.js` alone is not enough any more.** A user on an old installed version but a fresh
 `~/.claude/patch-claude-vscode-status.js` gets a chip that looks for a feed nobody writes; the
 branch just stays empty, which is the intended degradation.
@@ -80,6 +84,9 @@ node /path/to/patch-core.js && printf '\n' >> index.js && cat /tmp/rtl.js >> ind
 node --check index.js
 ```
 
+- **The gear menu prints a diagnostics line when the chip is empty** — pills, branch, tokens,
+  cost, thinking, model, layout/fit stage, feed size, cwd. Ask for a screenshot of it instead of
+  guessing why nothing is showing.
 - **Verify it renders, not just that it applied.** `node --check` and marker counts both pass for
   a chip that draws the wrong thing (see the `span` bug above) — after a Claude update, look at the
   panel, or ask the user for a screenshot, before calling it done or shipping a release.
