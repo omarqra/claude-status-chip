@@ -21,8 +21,26 @@ const MARKER = "cc-status-chip";
 // (Gear-menu changes persist in the webview's localStorage and override this default.)
 const ZOOM = 1.15;
 
+// Where editors keep their extensions. VSCode Server (remote/WSL/container) uses
+// ~/.vscode-server, and the VSCode forks each have their own pair -- on a Server box
+// ~/.vscode/extensions does not exist at all, readdirSync throws, and the patcher used to
+// report "nothing to patch" and do nothing, silently. __dirname/.. is where the editor
+// actually installed *us*, so it covers any root not on this list.
+function extensionRoots() {
+  const home = os.homedir();
+  const names = [
+    ".vscode", ".vscode-server", ".vscode-insiders", ".vscode-server-insiders",
+    ".vscode-oss", ".vscode-oss-server",
+    ".cursor", ".cursor-server", ".windsurf", ".windsurf-server",
+  ];
+  const roots = names.map((n) => path.join(home, n, "extensions"));
+  roots.push(path.resolve(__dirname, ".."));
+  const seen = new Set();
+  return roots.filter((r) => !seen.has(r) && seen.add(r));
+}
+
 function findExtension() {
-  const roots = [path.join(os.homedir(), ".vscode", "extensions")];
+  const roots = extensionRoots();
   const found = [];
   for (const root of roots) {
     let entries = [];
@@ -34,8 +52,18 @@ function findExtension() {
       if (fs.existsSync(file)) found.push({ file, v: [+m[1], +m[2], +m[3]] });
     }
   }
-  found.sort((a, b) => a.v[0] - b.v[0] || a.v[1] - b.v[1] || a.v[2] - b.v[2]);
-  return found.pop();
+  // one extension can be visible through two roots (e.g. a symlinked dir); dedupe by real path
+  const uniq = [];
+  const seen = new Set();
+  for (const f of found) {
+    let key = f.file;
+    try { key = fs.realpathSync(f.file); } catch {}
+    if (seen.has(key)) continue;
+    seen.add(key);
+    uniq.push(f);
+  }
+  uniq.sort((a, b) => a.v[0] - b.v[0] || a.v[1] - b.v[1] || a.v[2] - b.v[2]);
+  return uniq.pop();
 }
 
 // Anchor: the render call of the built-in context-usage button in the input footer:
@@ -315,7 +343,10 @@ const reRow = /[\w$]+===2&&[\w$]+\("div",\{className:[\w$]+\.modelPillRow,/;
 
 function run() {
   const ext = findExtension();
-  if (!ext) return { status: "none", message: "cc-status: Claude Code VSCode extension not found — nothing to patch" };
+  if (!ext) return {
+    status: "none", roots: extensionRoots(),
+    message: "cc-status: Claude Code VSCode extension not found in " + extensionRoots().join(", ") + " — nothing to patch",
+  };
   let src = fs.readFileSync(ext.file, "utf8");
   if (src.includes(MARKER)) return { status: "already", file: ext.file, message: "cc-status: already patched — " + ext.file };
   const m = src.match(re);
@@ -345,5 +376,5 @@ function run() {
   };
 }
 
-module.exports = { run };
+module.exports = { run, findExtension, extensionRoots };
 if (require.main === module) console.log(run().message);

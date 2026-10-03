@@ -11,6 +11,19 @@ the patch survives Claude's auto-updates.
 After editing the repo copy: `cp patch-core.js ~/.claude/patch-claude-vscode-status.js`, or the
 running extension keeps using the old logic.
 
+## There is more than one extensions folder
+
+`~/.vscode/extensions` is only the local-desktop case. VSCode Server (remote SSH, WSL, dev
+containers) installs into `~/.vscode-server/extensions`, where `~/.vscode` does not exist at all --
+`readdirSync` threw, the `catch { continue }` swallowed it, `run()` returned `status:"none"`, and
+`handle()` in `extension.js` only looked at `patched` and `anchor-missing`, so the extension
+installed, activated and did absolutely nothing without a word. Both halves were the bug: search
+every known root (plus `__dirname/..`, which is wherever the editor really installed us), and never
+leave a `status` unreported -- `none` and `error` now both show a warning naming the paths checked.
+
+`branch-feed.js` has to write its stylesheet next to the *same* bundle, so it calls
+`patch-core.findExtension()` rather than keeping its own copy of the search.
+
 ## Anchors into the minified bundle
 
 - Identifiers are `[\w$]+`, never `\w+` — the minifier hands out bare `$` and `$J` names.

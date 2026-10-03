@@ -58,8 +58,8 @@ Stock VS Code reads Microsoft's marketplace, where this extension is not publish
 from Open VSX and install it manually:
 
 ```
-curl -LO https://open-vsx.org/api/omarkara/claude-status-chip/1.3.0/file/omarkara.claude-status-chip-1.3.0.vsix
-code --install-extension omarkara.claude-status-chip-1.1.3.vsix
+curl -LO https://open-vsx.org/api/omarkara/claude-status-chip/1.3.1/file/omarkara.claude-status-chip-1.3.1.vsix
+code --install-extension omarkara.claude-status-chip-1.3.1.vsix
 ```
 
 Or: Extensions view → `⋯` → **Install from VSIX…** and pick the downloaded file.
@@ -68,6 +68,10 @@ Restart VSCode once. When the notification appears, click **Reload Window**.
 
 ## Notes / caveats
 
+- Works wherever the editor keeps its extensions: a local `~/.vscode`, a **VS Code Server** install
+  (remote SSH, WSL, dev container) under `~/.vscode-server`, and the Cursor / Windsurf / VSCodium
+  equivalents. If Claude Code genuinely isn't installed, you now get a warning saying where it looked
+  instead of silence.
 - This modifies the installed Claude Code extension's `webview/index.js` **locally** (a backup is kept
   as `index.js.cc-status.bak` next to it). Unofficial — use at your own risk.
 - If a future Claude version restructures its bundle, you'll get a warning ("patch anchor not found")

@@ -11,7 +11,6 @@
 // times a minute costs nothing and no git process is ever spawned.
 const fs = require("fs");
 const path = require("path");
-const os = require("os");
 
 const CSS_FILE = "cc-status-branch.css";
 const PROP = "--cc-branches";
@@ -19,20 +18,14 @@ const PROP = "--cc-branches";
 // evict every other window's folder from the shared file, which read as "the branch vanished".
 const MAX_ENTRIES = 400;
 
+// The stylesheet has to land next to the very bundle the chip is running from, so the
+// search for it lives in one place (patch-core) -- which knows about VSCode Server and the
+// forks too. Only the bundled copy is used here, never the user's ~/.claude override.
 function webviewDir() {
-  const root = path.join(os.homedir(), ".vscode", "extensions");
-  let best = null;
-  let entries = [];
-  try { entries = fs.readdirSync(root); } catch { return null; }
-  for (const d of entries) {
-    const m = d.match(/^anthropic\.claude-code-(\d+)\.(\d+)\.(\d+)/);
-    if (!m) continue;
-    const dir = path.join(root, d, "webview");
-    if (!fs.existsSync(path.join(dir, "index.js"))) continue;
-    const v = [+m[1], +m[2], +m[3]];
-    if (!best || v[0] > best.v[0] || (v[0] === best.v[0] && (v[1] > best.v[1] || (v[1] === best.v[1] && v[2] > best.v[2])))) best = { dir, v };
-  }
-  return best && best.dir;
+  try {
+    const ext = require("./patch-core.js").findExtension();
+    return ext ? path.dirname(ext.file) : null;
+  } catch { return null; }
 }
 
 // "ref: refs/heads/feature/x" -> "feature/x"; a detached HEAD gives the short sha

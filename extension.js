@@ -48,6 +48,15 @@ function handle(res, { silentAlready }) {
     notifyReload("Claude status chip applied. Reload the window to activate it.");
   } else if (res.status === "anchor-missing" && !silentAlready) {
     vscode.window.showWarningMessage("Claude status chip: patch anchor not found in this Claude extension version — the patcher needs updating.");
+  } else if (res.status === "none" && !silentAlready) {
+    // used to be swallowed here, which is how a VSCode Server install looked like a no-op:
+    // nothing patched, nothing said. Say where we looked, once per window.
+    vscode.window.showWarningMessage(
+      "Claude status chip: the Claude Code extension was not found, so there is nothing to patch. Looked in: " +
+        (res.roots || []).join(", "),
+    );
+  } else if (res.status === "error" && !silentAlready) {
+    vscode.window.showWarningMessage("Claude status chip: " + (res.message || "the patch failed."));
   }
 }
 
