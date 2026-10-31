@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Injects an always-visible status chip (model · branch · context tokens/window (%) · effort · think · cost)
+// Injects an always-visible status chip (branch · context tokens/window (%) · 5h/7d limits (%) · think · cost)
 // plus a gear (settings) button into the Claude Code VSCode extension's input toolbar (webview).
 // Segments render as theme-aware colored pills (--vscode-charts-* variables + color-mix backgrounds);
 // the context pill's background fills proportionally to usage. The gear opens a popup with per-segment
@@ -87,7 +87,7 @@ const runtime = [
   'function save(p){try{localStorage.setItem(K,JSON.stringify(p))}catch(_){}}',
   'function styleEl(id){var el=document.getElementById(id);if(!el){el=document.createElement("style");el.id=id;(document.head||document.documentElement).appendChild(el)}return el}',
   // [key, menu label, dot color] — dot colors mirror the chip pill colors
-  'var SEGS=[["branch","Branch","var(--vscode-charts-purple,#b180d7)"],["ctx","Context usage","var(--vscode-charts-green,#89d185)"],["think","Thinking","var(--vscode-charts-orange,#d18616)"],["cost","Cost","var(--vscode-charts-yellow,#cca700)"]];',
+  'var SEGS=[["branch","Branch","var(--vscode-charts-purple,#b180d7)"],["ctx","Context usage","var(--vscode-charts-green,#89d185)"],["lim5","5-hour limit","var(--vscode-charts-green,#89d185)"],["lim7","7-day limit","var(--vscode-charts-green,#89d185)"],["think","Thinking","var(--vscode-charts-orange,#d18616)"],["cost","Cost","var(--vscode-charts-yellow,#cca700)"]];',
   // never reassign: if the app rendered before this block ran, the chip already parked its
   // builder here, and replacing the object would strip it
   'var api=window.__ccStatus=window.__ccStatus||{};',
@@ -127,7 +127,7 @@ const runtime = [
   'dg.style.cssText="margin:8px 6px 0;padding-top:8px;border-top:1px solid var(--vscode-widget-border,#454545);opacity:.55;font-size:10px;line-height:1.6;word-break:break-all";',
   'var d=api.__diag||{},fe=btn&&btn.closest?btn.closest("[data-fit-stage]"):null;',
   'dg.textContent="pills "+(d.n||0)+" · branch "+(d.br||"-")+" · tok "+(d.t||0)+" · cost "+(d.co||0)',
-  '+" · think "+(d.th||"-")',
+  '+" · think "+(d.th||"-")+" · 5h "+(d.l5>=0?d.l5+"%":api.__lim?"-":"no anchor")+" · 7d "+(d.l7>=0?d.l7+"%":api.__lim?"-":"no anchor")',
   '+" · layout "+((fe&&fe.parentElement&&fe.parentElement.getAttribute("data-cc-mode"))||"inline")',
   '+"/"+((fe&&fe.getAttribute("data-fit-stage"))||"?")',
   '+" · feed "+Object.keys(api.branches||{}).length+" · cwd "+(d.cw||"-");',
@@ -274,28 +274,54 @@ const chip = (jsx, sess) => `,(function(_ccJsx,_ccS){` +
   `if(WT&&WT.branch)BR=WT.branch;` +
   // computed signal: thinkingLevelOverride ?? connection config thinkingLevel ?? "off"
   `var TH=(_ccS.thinkingLevel&&_ccS.thinkingLevel.value)||"",` +
-  `W=U.contextWindow||0,T=U.totalTokens||0,CO=U.totalCost||0,` +
-  `P=W>0?Math.round(Math.min(T/W*100,100)):0,` +
+  `W=U.contextWindow||0,T=U.totalTokens||0,CO=U.totalCost||0;` +
+  // contextWindow only arrives with the end-of-turn result event, and a window reload resets it
+  // to 0 while token counts keep streaming in -- so a restored session read "76k tok" until its
+  // next reply finished. Remember the last window Claude reported per model and use that meanwhile.
+  `var MK="cc-ctxw:"+((_ccS.currentMainLoopModel&&_ccS.currentMainLoopModel.value)||"");` +
+  `try{if(W>0){if(localStorage.getItem(MK)!==""+W){localStorage.setItem(MK,""+W);localStorage.setItem("cc-ctxw:",""+W)}}` +
+  `else W=+localStorage.getItem(MK)||+localStorage.getItem("cc-ctxw:")||0}catch(_){}` +
+  `var P=W>0?Math.round(Math.min(T/W*100,100)):0,` +
   `F=function(n){return n>=1e6?(n/1e6).toFixed(1).replace(/\\.0$/,"")+"M":n>=1e3?Math.round(n/1e3)+"k":""+n};` +
+  // 5-hour and 7-day limits: Claude's own rate-limit signal, exposed by the third injection
+  // (see reLim). Both windows share one shape: utilization a 0..1 fraction, resetsAt epoch
+  // seconds. Reading .value during render subscribes this component to it, same as usageData.
+  // A window whose reset has passed reads 0%, which is what Claude's own usage panel shows.
+  `var LG=window.__ccStatus&&window.__ccStatus.__lim,LW=null;try{LW=LG?LG().value:null}catch(_){}` +
+  `var LIM=function(o,nm){if(!o||typeof o.utilization!=="number")return[-1,""];` +
+  `var LR=(o.resetsAt||0)*1000,LN=Date.now(),` +
+  `LP=LR&&LR<=LN?0:Math.round(Math.min(Math.max(o.utilization,0),1)*100),LT=nm+" limit: "+LP+"% used";` +
+  `if(LR>LN){var LD=new Date(LR),LM=Math.max(1,Math.round((LR-LN)/60000)),` +
+  `LH=LD.toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"});` +
+  // a window can straddle midnight; name the day then, or "resets 01:30" reads as hours ago.
+  // A weekday is unambiguous because no window is longer than seven days.
+  `if(LD.toDateString()!==new Date(LN).toDateString())LH=LD.toLocaleDateString([],{weekday:"short"})+" "+LH;` +
+  `LT+="\\nResets at "+LH+" (in "+(LM>=1440?Math.floor(LM/1440)+"d "+Math.floor(LM%1440/60)+"h":` +
+  `LM>=60?Math.floor(LM/60)+"h "+LM%60+"m":LM+"m")+")"}return[LP,LT]};` +
+  `var L5=LIM(LW&&LW.five_hour,"5-hour"),L7=LIM(LW&&LW.seven_day,"7-day");` +
   `var L=[];` +
   `if(BR)L.push(["branch","("+BR+")"]);` +
   // window size only arrives with the first end-of-turn result event — show bare tokens until then
   `if(W>0)L.push(["ctx",F(T)+"/"+F(W)+" ("+P+"%)"]);` +
   `else if(T>0)L.push(["ctx",F(T)+" tok"]);` +
+  `if(L5[0]>=0)L.push(["lim5","5h "+L5[0]+"%",L5[1]]);` +
+  `if(L7[0]>=0)L.push(["lim7","7d "+L7[0]+"%",L7[1]]);` +
   `if(TH&&TH!=="off")L.push(["think",/^(on|default_on)$/.test(TH)?"think":"think:"+TH]);` +
   `if(CO>=0.005)L.push(["cost","$"+CO.toFixed(2)]);` +
   // theme-aware colors from the charts palette (adapt to light/dark themes)
   `var GRN="var(--vscode-charts-green,#89d185)",YEL="var(--vscode-charts-yellow,#cca700)",` +
   `RED="var(--vscode-charts-red,#f14c4c)";` +
   `var CH={branch:"var(--vscode-charts-purple,#b180d7)",think:"var(--vscode-charts-orange,#d18616)",cost:YEL};` +
-  `var col=P>=80?RED:P>=50?YEL:GRN;` +
+  `var tone=function(p){return p>=80?RED:p>=50?YEL:GRN};` +
+  // percentage-bearing pills: coloured by level and filled like a progress bar
+  `var PCT={ctx:W>0?P:-1,lim5:L5[0],lim7:L7[0]};` +
   `var A=(window.__ccStatus=window.__ccStatus||{});` +
   `var mkPill=function(s){` +
-  `var c=s[0]==="ctx"?col:CH[s[0]]||"var(--vscode-descriptionForeground)";` +
+  `var pc=PCT[s[0]],c=s[0] in PCT?tone(pc):CH[s[0]]||"var(--vscode-descriptionForeground)";` +
   `var st={color:c,background:"color-mix(in srgb, "+c+" 12%, transparent)",borderRadius:"999px",padding:"1px 7px",lineHeight:"16px"};` +
-  // the context pill doubles as a progress bar: its background fills to the usage percentage
-  `if(s[0]==="ctx"&&W>0)st.background="linear-gradient(90deg, color-mix(in srgb, "+c+" 30%, transparent) "+P+"%, color-mix(in srgb, "+c+" 10%, transparent) "+P+"%)";` +
-  `return _ccJsx("span",{"data-seg":s[0],style:st,children:s[1]})};` +
+  `if(pc>=0)st.background="linear-gradient(90deg, color-mix(in srgb, "+c+" 30%, transparent) "+pc+"%, color-mix(in srgb, "+c+" 10%, transparent) "+pc+"%)";` +
+  `var pr={"data-seg":s[0],style:st,children:s[1]};if(s[2])pr.title=s[2];` +
+  `return _ccJsx("span",pr)};` +
   // gear leads the group, next to Claude's own footer buttons: always rendered inline, so
   // settings stay reachable even when every segment is hidden or empty
   `var GEAR=_ccJsx("button",{type:"button",className:"cc-gear",title:"Status bar settings","aria-label":"Status bar settings",` +
@@ -321,7 +347,7 @@ const chip = (jsx, sess) => `,(function(_ccJsx,_ccS){` +
   `var vis=[],q;for(q=0;q<L.length;q++)if(VIS(L[q][0]))vis.push(L[q]);` +
   // nothing to show -> render no row at all. A row holding a lone gear is worse than none,
   // and it used to appear on any session that had not finished a turn yet.
-  `A.__diag={n:vis.length,br:BR,t:T,w:W,co:CO,th:TH,cw:CW,` +
+  `A.__diag={n:vis.length,br:BR,t:T,w:W,co:CO,th:TH,cw:CW,l5:L5[0],l7:L7[0],` +
   `keys:vis.map(function(x){return x[0]}).join(",")};` +
   `if(v==="row"&&!vis.length)return null;` +
   `var kids=vis.map(mkPill);kids.unshift(GEAR);` +
@@ -340,6 +366,24 @@ const chipRow = () => `(window.__ccStatus&&window.__ccStatus.__mk?window.__ccSta
 // 2.1.261, which is what silently cost us the own row on that version). Searched only
 // just after the usage button anchor, so we can not land in a similar-looking component.
 const reRow = /[\w$]+===2&&[\w$]+\("div",\{className:[\w$]+\.modelPillRow,/;
+
+// Third injection: the rate-limit windows. They live in a module-level signal, not in the
+// session store, so nothing the usage-button anchor captures can reach them. Every update
+// (rate_limit_event after each turn, panel_usage_update) goes through one tiny setter,
+//   function MV(e){let t=XMe(Jb.value,e);if(t!==Jb.value)Jb.value=t}
+// and right after it we park a getter for the signal on window.__ccStatus.__lim. A getter
+// rather than the signal itself, so it never matters whether `var Jb=...` has run yet.
+// "Merge into a signal" is a generic shape, so the merge function it calls must also be the
+// one that knows about "five_hour". Optional: a miss only costs the 5h/7d pills.
+const reLim = /function [\w$]+\(([\w$]+)\)\{let ([\w$]+)=([\w$]+)\(([\w$]+)\.value,\1\);if\(\2!==\4\.value\)\4\.value=\2\}/g;
+
+function findLimits(src) {
+  for (const m of src.matchAll(reLim)) {
+    const at = src.indexOf("function " + m[3] + "(");
+    if (at >= 0 && src.slice(at, at + 400).includes('"five_hour"')) return m;
+  }
+  return null;
+}
 
 function run() {
   const ext = findExtension();
@@ -366,13 +410,20 @@ function run() {
     const at = from + mRow.index;
     src = src.slice(0, at) + chipRow() + "," + src.slice(at);
   }
+  // third injection: expose the rate-limit signal for the 5h/7d pills. Optional as well.
+  const mLim = findLimits(src);
+  if (mLim) {
+    const at = mLim.index + mLim[0].length;
+    src = src.slice(0, at) + `;(window.__ccStatus=window.__ccStatus||{}).__lim=function(){return ${mLim[4]}};` + src.slice(at);
+  }
   // leading \n in case the bundle ends with a // comment (e.g. sourceMappingURL)
   src += "\n" + runtime + "\n";
   fs.writeFileSync(ext.file, src);
   return {
-    status: "patched", file: ext.file, rowMode: !!mRow,
+    status: "patched", file: ext.file, rowMode: !!mRow, limits: !!mLim,
     message: "cc-status: patched " + ext.file + " (backup: " + path.basename(bak) + ")" +
-      (mRow ? "" : " [own-row anchor not found -- chip stays inline]") + ". Reload the VSCode window to see it.",
+      (mRow ? "" : " [own-row anchor not found -- chip stays inline]") +
+      (mLim ? "" : " [rate-limit anchor not found -- no 5h/7d pills]") + ". Reload the VSCode window to see it.",
   };
 }
 

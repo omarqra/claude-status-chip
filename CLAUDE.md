@@ -42,7 +42,7 @@ leave a `status` unreported -- `none` and `error` now both show a warning naming
   the session store into the chip's IIFE as parameters. 2.1.270 minified the jsx factory to `F`,
   our number formatter is `var F=...`, and the chip silently rendered the literal text `span`.
 
-## Two injection points
+## Injection points
 
 1. **Inline** — after the built-in usage button in the input footer. Required; a miss returns
    `anchor-missing` and the extension warns the user.
@@ -52,6 +52,14 @@ leave a `status` unreported -- `none` and `error` now both show a warning naming
 
 The inline copy leaves a builder on `window.__ccStatus.__mk` and the row copy calls it, which works
 because array children evaluate in source order.
+
+3. **Rate limits** — the 5h and 7d pills read Claude's module-level rate-limit signal (`var Jb=Ne(null)`
+   in 2.1.314), which is not in the session store. We anchor on its one setter,
+   `function MV(e){let t=XMe(Jb.value,e);if(t!==Jb.value)Jb.value=t}`, check that the merge function
+   mentions `"five_hour"`, and park a getter on `window.__ccStatus.__lim` right after it.
+   `five_hour.utilization` is a 0..1 fraction and `resetsAt` is in epoch seconds. This one is optional and
+   fails silently too: the pills just never show up, and the gear diagnostics then read `5h no anchor`. Both windows
+   (`five_hour`, `seven_day`) have the same shape and go through the same merge, so one anchor covers both.
 
 ## Claude's footer measures itself — stay out of its way
 
